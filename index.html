@@ -3,91 +3,112 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Vendor POS with Login + Sync</title>
+  <title>Vendor POS — Multi-vendor (Manual Sync)</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase compat libs (simple for single-file apps) -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
   <style>
-    body { background:#f1f5f9; font-family:sans-serif; }
-    .big-btn{padding:14px 20px;border-radius:12px;font-weight:600;}
+    body { background:#f8fafc; font-family: Inter, system-ui, sans-serif; }
+    .big-btn{ padding:12px 16px; border-radius:10px; font-weight:600; }
+    .muted { color: #6b7280; }
+    .small { font-size:0.85rem; }
   </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen flex items-start justify-center p-4">
 
-<div id="authSection" class="max-w-md mx-auto mt-16 bg-white p-6 rounded-xl shadow">
-  <h2 class="text-2xl font-bold mb-4 text-center">Vendor Login</h2>
-  <input id="email" type="email" placeholder="Email" class="w-full border rounded-lg p-3 mb-3"/>
-  <input id="password" type="password" placeholder="Password" class="w-full border rounded-lg p-3 mb-4"/>
-  <div class="flex gap-2">
-    <button id="loginBtn" class="flex-1 big-btn bg-emerald-500 text-white">Login</button>
-    <button id="registerBtn" class="flex-1 big-btn bg-sky-500 text-white">Register</button>
+  <!-- LOGIN / REGISTER -->
+  <div id="authWrap" class="w-full max-w-md bg-white rounded-xl shadow p-6">
+    <h2 class="text-2xl font-bold mb-3 text-center">Vendor Login / Register</h2>
+    <input id="regShop" placeholder="Shop name (for registration)" class="w-full border rounded p-3 mb-2" />
+    <input id="email" type="email" placeholder="Email" class="w-full border rounded p-3 mb-2" />
+    <input id="password" type="password" placeholder="Password" class="w-full border rounded p-3 mb-3" />
+    <div class="flex gap-2">
+      <button id="registerBtn" class="flex-1 big-btn bg-sky-500 text-white">Register</button>
+      <button id="loginBtn" class="flex-1 big-btn bg-emerald-500 text-white">Login</button>
+    </div>
+    <p class="text-xs muted mt-3">Register: create vendor account (Shop name stored). Login: fetch your vendor data from cloud (if any).</p>
   </div>
-</div>
 
-<div id="appSection" class="hidden max-w-xl mx-auto p-4">
-  <header class="flex justify-between items-center mb-4">
-    <h1 class="text-xl font-bold">Vendor POS</h1>
-    <div class="flex gap-2">
-      <button id="syncBtn" class="big-btn bg-amber-400 text-white text-sm">Sync</button>
-      <button id="logoutBtn" class="big-btn bg-red-500 text-white text-sm">Logout</button>
-    </div>
-  </header>
-
-  <nav class="flex gap-2 mb-4">
-    <button id="tabProducts" class="flex-1 big-btn bg-emerald-100">Products</button>
-    <button id="tabSales" class="flex-1 big-btn bg-slate-100">Sales</button>
-    <button id="tabHistory" class="flex-1 big-btn bg-slate-100">History</button>
-  </nav>
-
-  <!-- Products tab -->
-  <section id="viewProducts">
-    <h2 class="font-semibold mb-2 text-lg">Add / Edit Product</h2>
-    <div class="space-y-3">
-      <input id="p_name" placeholder="Product name" class="w-full border rounded p-3"/>
-      <input id="p_price" type="number" placeholder="Price" class="w-full border rounded p-3"/>
-      <div class="flex gap-2">
-        <input id="p_qty" type="number" placeholder="Qty (optional)" class="flex-1 border rounded p-3"/>
-        <select id="p_unit" class="border rounded p-3">
-          <option value="kg">kg</option>
-          <option value="g">g</option>
-          <option value="piece">piece</option>
-          <option value="dozen">dozen</option>
-        </select>
+  <!-- APP -->
+  <div id="appWrap" class="hidden w-full max-w-xl">
+    <header class="flex items-center justify-between mb-4">
+      <div>
+        <div id="shopName" class="text-lg font-bold">Vendor POS</div>
+        <div id="vendorInfo" class="small muted">email / uid</div>
       </div>
-      <div class="flex gap-2">
-        <button id="saveProduct" class="flex-1 big-btn bg-emerald-500 text-white">Save</button>
-        <button id="clearProduct" class="flex-1 big-btn bg-slate-200">Clear</button>
+      <div class="flex items-center gap-2">
+        <div id="syncStatus" class="px-3 py-1 rounded small">Offline 🔴</div>
+        <button id="syncBtn" class="big-btn bg-amber-400 text-white small">Sync</button>
+        <button id="logoutBtn" class="big-btn bg-red-500 text-white small">Logout</button>
       </div>
-    </div>
-    <hr class="my-4"/>
-    <h3 class="font-semibold text-lg mb-2">Products</h3>
-    <div id="productList" class="space-y-2"></div>
-  </section>
+    </header>
 
-  <!-- Sales tab -->
-  <section id="viewSales" class="hidden">
-    <h2 class="font-semibold mb-3 text-lg">Record Sale</h2>
-    <input id="saleSearch" placeholder="Search product" class="border rounded p-3 w-full mb-2"/>
-    <select id="sale_product" class="border rounded p-3 w-full mb-2"></select>
-    <input id="sale_qty" type="number" placeholder="Quantity" class="border rounded p-3 w-full mb-2"/>
-    <div class="flex gap-2">
-      <button id="addToCart" class="flex-1 big-btn bg-amber-400 text-white">Add to Cart</button>
-      <button id="checkout" class="flex-1 big-btn bg-emerald-500 text-white">Checkout</button>
-    </div>
-    <div id="cartList" class="mt-4 space-y-2"></div>
-  </section>
+    <nav class="flex gap-2 mb-4">
+      <button id="tabProducts" class="flex-1 big-btn bg-emerald-100">Products</button>
+      <button id="tabSales" class="flex-1 big-btn bg-slate-100">Sales</button>
+      <button id="tabHistory" class="flex-1 big-btn bg-slate-100">History</button>
+    </nav>
 
-  <!-- History tab -->
-  <section id="viewHistory" class="hidden">
-    <h2 class="font-semibold mb-3 text-lg">Sales History</h2>
-    <div id="historyList" class="space-y-2"></div>
-  </section>
-</div>
+    <main class="bg-white rounded-xl p-4 shadow">
+      <!-- PRODUCTS -->
+      <section id="view-products">
+        <h3 class="font-semibold mb-2">Add / Edit Product</h3>
+        <div class="space-y-2">
+          <input id="p_name" placeholder="Name (e.g., Tomato)" class="w-full border rounded p-2" />
+          <div class="flex gap-2">
+            <input id="p_price" type="number" placeholder="Price (₹)" class="flex-1 border rounded p-2" />
+            <select id="p_unit" class="border rounded p-2 w-36">
+              <option value="kg">kg</option><option value="g">g</option><option value="piece">piece</option><option value="dozen">dozen</option>
+            </select>
+            <input id="p_qty" type="number" placeholder="Qty (opt)" class="w-28 border rounded p-2" />
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button id="saveProduct" class="flex-1 big-btn bg-emerald-500 text-white">Save</button>
+            <button id="clearProduct" class="flex-1 big-btn bg-slate-200">Clear</button>
+          </div>
+        </div>
+        <hr class="my-3" />
+        <h4 class="font-semibold mb-2">Products</h4>
+        <div id="productList" class="space-y-2 max-h-64 overflow-auto"></div>
+      </section>
+
+      <!-- SALES -->
+      <section id="view-sales" class="hidden">
+        <h3 class="font-semibold mb-2">Record Sale</h3>
+        <input id="saleSearch" placeholder="Type first letters to search" class="w-full border rounded p-2 mb-2" />
+        <select id="sale_product" class="w-full border rounded p-2 mb-2"></select>
+        <div class="flex gap-2">
+          <input id="sale_qty" type="number" placeholder="Quantity" class="flex-1 border rounded p-2" />
+          <div id="sale_unit_box" class="w-28 border rounded p-2 text-center muted">unit</div>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button id="addToCart" class="flex-1 big-btn bg-amber-400 text-white">Add to Cart</button>
+          <button id="openCart" class="flex-1 big-btn bg-slate-200">Open Cart</button>
+        </div>
+        <hr class="my-3" />
+        <h4 class="font-semibold">Cart</h4>
+        <div id="quickCart" class="space-y-2 max-h-56 overflow-auto"></div>
+        <div class="mt-3">
+          <button id="checkoutBtn" class="w-full big-btn bg-emerald-600 text-white">Checkout</button>
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="view-history" class="hidden">
+        <h3 class="font-semibold mb-2">Sales History</h3>
+        <div id="historyList" class="space-y-2 max-h-72 overflow-auto"></div>
+        <div class="mt-3">
+          <button id="clearHistoryBtn" class="big-btn bg-red-500 text-white w-full">Clear History</button>
+        </div>
+      </section>
+    </main>
+  </div>
 
 <script>
-(async () => {
-  // === Firebase Setup ===
+(async function(){
+  // ---------- FIREBASE CONFIG ----------
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
@@ -98,197 +119,337 @@ const firebaseConfig = {
   appId: "1:729715567147:web:2b04c4ff14fd09daa7186e",
   measurementId: "G-CG95QJFKGW"
 };
+  // ---------- INIT ----------
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
 
-  // === DOM helpers ===
+  // ---------- HELPERS & LS ----------
   const $ = id => document.getElementById(id);
+  const LS_PRODUCTS = keyFor => `vendor_products_${keyFor}`;
+  const LS_SALES = keyFor => `vendor_sales_${keyFor}`;
+  function loadLS(key){ try { return JSON.parse(localStorage.getItem(key)||'[]'); } catch(e){ return []; } }
+  function saveLS(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 
-  // Sections
-  const authSection = $("authSection");
-  const appSection = $("appSection");
-  const tabProducts = $("tabProducts");
-  const tabSales = $("tabSales");
-  const tabHistory = $("tabHistory");
-  const viewProducts = $("viewProducts");
-  const viewSales = $("viewSales");
-  const viewHistory = $("viewHistory");
-  const syncBtn = $("syncBtn");
-  const logoutBtn = $("logoutBtn");
-
-  // === Local Storage Keys ===
-  const LS_PRODUCTS = "vendor_products";
-  const LS_SALES = "vendor_sales";
-
-  function loadLS(key){ return JSON.parse(localStorage.getItem(key)||"[]"); }
-  function saveLS(key,val){ localStorage.setItem(key,JSON.stringify(val)); }
-
-  let products = loadLS(LS_PRODUCTS);
-  let sales = loadLS(LS_SALES);
-  let cart = [];
+  // App state
   let currentUser = null;
+  let currentUID = null;
+  let currentShop = null;
+  let products = [];
+  let sales = [];
+  let cart = [];
+  let dirty = false; // true when local changes exist not yet synced
 
-  // === Auth ===
-  $("loginBtn").onclick = async()=>{
-    const e=$("email").value, p=$("password").value;
+  // DOM refs
+  const authWrap = $('authWrap');
+  const appWrap = $('appWrap');
+  const shopNameEl = $('shopName');
+  const vendorInfoEl = $('vendorInfo');
+  const syncStatusEl = $('syncStatus');
+  const syncBtn = $('syncBtn');
+  const logoutBtn = $('logoutBtn');
+
+  // Tabs
+  const tabProducts = $('tabProducts'), tabSales = $('tabSales'), tabHistory = $('tabHistory');
+  const viewProducts = $('view-products'), viewSales = $('view-sales'), viewHistory = $('view-history');
+
+  // Product refs
+  const p_name = $('p_name'), p_price = $('p_price'), p_qty = $('p_qty'), p_unit = $('p_unit');
+  const saveProductBtn = $('saveProduct'), clearProductBtn = $('clearProduct'), productList = $('productList');
+
+  // Sales refs
+  const saleSearch = $('saleSearch'), sale_product = $('sale_product'), sale_qty = $('sale_qty'), sale_unit_box = $('sale_unit_box');
+  const addToCartBtn = $('addToCart'), openCartBtn = $('openCart'), quickCart = $('quickCart'), checkoutBtn = $('checkoutBtn');
+
+  const historyList = $('historyList'), clearHistoryBtn = $('clearHistoryBtn');
+
+  // Auth controls
+  const registerBtn = $('registerBtn'), loginBtn = $('loginBtn');
+  const regShop = $('regShop'), emailInp = $('email'), passInp = $('password');
+
+  // ---------- UI helpers ----------
+  function setSyncStatus() {
+    if (!navigator.onLine) { syncStatusEl.textContent = 'Offline 🔴'; syncStatusEl.style.background=''; return; }
+    if (!currentUID) { syncStatusEl.textContent = 'Not signed in'; syncStatusEl.style.background=''; return; }
+    if (dirty) { syncStatusEl.textContent = 'Pending 🟡'; syncStatusEl.style.background=''; }
+    else { syncStatusEl.textContent = 'Synced ✅'; syncStatusEl.style.background=''; }
+  }
+
+  function markDirty(v=true){ dirty = v; setSyncStatus(); }
+
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+
+  // ---------- Auth flows ----------
+  registerBtn.onclick = async () => {
+    const email = emailInp.value.trim();
+    const pass = passInp.value;
+    const shop = regShop.value.trim();
+    if(!email || !pass || !shop) return alert('Enter shop name, email and password to register');
     try{
-      await auth.signInWithEmailAndPassword(e,p);
-    }catch(err){ alert(err.message); }
+      const cred = await auth.createUserWithEmailAndPassword(email, pass);
+      const user = cred.user;
+      // create vendor profile document
+      await db.collection('vendors').doc(user.uid).set({
+        shopName: shop,
+        email: email,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge:true });
+      alert('Registered. Now log in.');
+    }catch(e){ alert(e.message); }
   };
-  $("registerBtn").onclick = async()=>{
-    const e=$("email").value, p=$("password").value;
+
+  loginBtn.onclick = async () => {
+    const email = emailInp.value.trim();
+    const pass = passInp.value;
+    if(!email||!pass) return alert('Enter email & password');
     try{
-      await auth.createUserWithEmailAndPassword(e,p);
-      alert("Registered! Now login.");
-    }catch(err){ alert(err.message); }
+      await auth.signInWithEmailAndPassword(email, pass);
+    }catch(e){ alert(e.message); }
   };
 
-  logoutBtn.onclick = ()=> auth.signOut();
+  logoutBtn.onclick = async () => {
+    await auth.signOut();
+  };
 
-  auth.onAuthStateChanged(async user=>{
+  auth.onAuthStateChanged(async user => {
     if(user){
       currentUser = user;
-      authSection.classList.add("hidden");
-      appSection.classList.remove("hidden");
-      await loadFromCloud();
-      refreshProducts();
-      refreshSales();
-      refreshHistory();
+      currentUID = user.uid;
+      // load vendor profile
+      const profDoc = await db.collection('vendors').doc(currentUID).get().catch(()=>null);
+      currentShop = (profDoc && profDoc.exists && profDoc.data().shopName) ? profDoc.data().shopName : 'Unknown Shop';
+      // load local data (namespaced by UID)
+      products = loadLS(LS_PRODUCTS(currentUID));
+      sales = loadLS(LS_SALES(currentUID));
+      // UI
+      authWrap.classList.add('hidden');
+      appWrap.classList.remove('hidden');
+      shopNameEl.textContent = currentShop;
+      vendorInfoEl.textContent = `${currentUser.email} • UID: ${currentUID}`;
+      setSyncStatus();
+      refreshProductsUI();
+      refreshCartUI();
+      refreshHistoryUI();
     } else {
-      currentUser=null;
-      appSection.classList.add("hidden");
-      authSection.classList.remove("hidden");
+      currentUser = null; currentUID = null; currentShop = null;
+      authWrap.classList.remove('hidden');
+      appWrap.classList.add('hidden');
     }
   });
 
-  // === Tabs ===
-  function showTab(tab){
-    [viewProducts,viewSales,viewHistory].forEach(x=>x.classList.add("hidden"));
-    [tabProducts,tabSales,tabHistory].forEach(x=>x.classList.remove("bg-emerald-200"));
-    if(tab==="products"){viewProducts.classList.remove("hidden");tabProducts.classList.add("bg-emerald-200");}
-    if(tab==="sales"){viewSales.classList.remove("hidden");tabSales.classList.add("bg-emerald-200");}
-    if(tab==="history"){viewHistory.classList.remove("hidden");tabHistory.classList.add("bg-emerald-200");}
+  // ---------- Tabs ----------
+  function show(tab){
+    viewProducts.classList.add('hidden'); viewSales.classList.add('hidden'); viewHistory.classList.add('hidden');
+    tabProducts.classList.remove('bg-emerald-200'); tabSales.classList.remove('bg-emerald-200'); tabHistory.classList.remove('bg-emerald-200');
+    if(tab==='products'){ viewProducts.classList.remove('hidden'); tabProducts.classList.add('bg-emerald-200'); }
+    if(tab==='sales'){ viewSales.classList.remove('hidden'); tabSales.classList.add('bg-emerald-200'); }
+    if(tab==='history'){ viewHistory.classList.remove('hidden'); tabHistory.classList.add('bg-emerald-200'); }
   }
-  tabProducts.onclick=()=>showTab("products");
-  tabSales.onclick=()=>showTab("sales");
-  tabHistory.onclick=()=>showTab("history");
-  showTab("products");
+  tabProducts.onclick=()=>show('products'); tabSales.onclick=()=>show('sales'); tabHistory.onclick=()=>show('history');
+  show('products');
 
-  // === Product CRUD ===
-  const pName=$("p_name"),pPrice=$("p_price"),pQty=$("p_qty"),pUnit=$("p_unit");
-  const productList=$("productList");
-  let editId=null;
-
-  $("saveProduct").onclick=()=>{
-    const name=pName.value.trim(); if(!name)return alert("Enter name");
-    const price=parseFloat(pPrice.value)||0;
-    const qty=pQty.value?parseFloat(pQty.value):"";
-    const unit=pUnit.value;
-    if(editId){
-      const i=products.findIndex(p=>p.id===editId);
-      if(i>=0)products[i]={...products[i],name,price,qty,unit};
-      editId=null;
-    }else products.push({id:Date.now()+"",name,price,qty,unit});
-    saveLS(LS_PRODUCTS,products);
-    refreshProducts(); $("p_name").value=$("p_price").value=$("p_qty").value="";
+  // ---------- Products UI ----------
+  let editProductId = null;
+  saveProductBtn.onclick = () => {
+    const name = p_name.value.trim(); if(!name) return alert('Name required');
+    const price = Number(p_price.value) || 0; const qtyVal = p_qty.value === '' ? '' : Number(p_qty.value);
+    const unit = p_unit.value;
+    if(editProductId){
+      const idx = products.findIndex(x=>x.id===editProductId);
+      if(idx>=0) products[idx] = {...products[idx], name, price, qty: qtyVal, unit};
+      editProductId = null;
+    } else {
+      products.push({ id: uid(), name, price, qty: qtyVal, unit });
+    }
+    // save local
+    saveLS(LS_PRODUCTS(currentUID), products);
+    markDirty(true);
+    refreshProductsUI();
+    p_name.value = ''; p_price.value=''; p_qty.value='';
   };
-  $("clearProduct").onclick=()=>{editId=null;pName.value=pPrice.value=pQty.value="";};
+  clearProductBtn.onclick = ()=>{ editProductId=null; p_name.value=''; p_price.value=''; p_qty.value=''; };
 
-  function refreshProducts(){
-    productList.innerHTML="";
-    if(!products.length)return productList.innerHTML="<div>No products</div>";
+  function refreshProductsUI(){
+    productList.innerHTML = '';
+    if(!products.length) { productList.innerHTML = '<div class="muted">No products</div>'; refreshSaleProducts(); return; }
     products.forEach(p=>{
-      const div=document.createElement("div");
-      div.className="flex justify-between border rounded p-2";
-      div.innerHTML=`<div><b>${p.name}</b> - ₹${p.price}/${p.unit} ${p.qty?`• ${p.qty}${p.unit}`:""}</div>
-        <div class='flex gap-1'>
-          <button class='bg-sky-500 text-white px-2 rounded editBtn'>Edit</button>
-          <button class='bg-red-500 text-white px-2 rounded delBtn'>Del</button>
+      const row = document.createElement('div');
+      row.className = 'flex justify-between items-center border rounded p-2';
+      row.innerHTML = `<div><div class="font-semibold">${escapeHtml(p.name)}</div><div class="small muted">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty!==''? ' • ' + p.qty + ' ' + p.unit : ''}</div></div>
+        <div class="flex gap-2">
+          <button class="bg-sky-500 text-white px-2 rounded edit">Edit</button>
+          <button class="bg-red-500 text-white px-2 rounded del">Del</button>
         </div>`;
-      div.querySelector(".editBtn").onclick=()=>{editId=p.id;pName.value=p.name;pPrice.value=p.price;pQty.value=p.qty;pUnit.value=p.unit;};
-      div.querySelector(".delBtn").onclick=()=>{if(confirm("Delete?")){products=products.filter(x=>x.id!==p.id);saveLS(LS_PRODUCTS,products);refreshProducts();}};
-      productList.appendChild(div);
+      row.querySelector('.edit').onclick = ()=>{ editProductId = p.id; p_name.value = p.name; p_price.value = p.price; p_qty.value = p.qty; p_unit.value = p.unit; window.scrollTo({top:0, behavior:'smooth'}); };
+      row.querySelector('.del').onclick = ()=>{ if(confirm('Delete product?')){ products = products.filter(x=>x.id!==p.id); saveLS(LS_PRODUCTS(currentUID), products); markDirty(true); refreshProductsUI(); } };
+      productList.appendChild(row);
     });
-    refreshSales();
+    refreshSaleProducts();
   }
 
-  // === Sales ===
-  const saleProduct=$("sale_product"),saleQty=$("sale_qty"),cartList=$("cartList"),saleSearch=$("saleSearch");
-
-  function refreshSales(){
-    saleProduct.innerHTML=products.map(p=>`<option value='${p.id}'>${p.name} ₹${p.price}/${p.unit}</option>`).join("");
+  // ---------- Sales UI ----------
+  saleSearch.oninput = ()=> refreshSaleProducts(saleSearch.value);
+  function refreshSaleProducts(filterTerm=''){
+    const term = (filterTerm||'').trim().toLowerCase();
+    let list = products.slice();
+    if(term){
+      const starts = list.filter(p => p.name.toLowerCase().startsWith(term));
+      const includes = list.filter(p => !p.name.toLowerCase().startsWith(term) && p.name.toLowerCase().includes(term));
+      list = starts.concat(includes);
+    }
+    sale_product.innerHTML = list.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ₹${Number(p.price).toFixed(2)}/${p.unit}</option>`).join('') || '<option value="">No match</option>';
+    const sel = products.find(x => x.id === sale_product.value) || products[0];
+    sale_unit_box.textContent = sel ? sel.unit : '—';
   }
 
-  $("addToCart").onclick=()=>{
-    const pid=saleProduct.value; const p=products.find(x=>x.id===pid);
-    const q=parseFloat(saleQty.value); if(!q)return alert("Enter qty");
-    cart.push({...p,qty:q}); saleQty.value=""; refreshCart();
+  addToCartBtn.onclick = ()=>{
+    const pid = sale_product.value; const p = products.find(x=>x.id===pid); if(!p) return alert('Select product');
+    const q = Number(sale_qty.value); if(!q || q<=0) return alert('Enter qty');
+    const existing = cart.find(x=>x.id===p.id && x.unit===p.unit);
+    if(existing) existing.qty = Number(existing.qty) + q; else cart.push({ id: p.id, name: p.name, price: p.price, qty: q, unit: p.unit });
+    sale_qty.value=''; refreshCartUI();
   };
 
-  function refreshCart(){
-    cartList.innerHTML="";
-    if(!cart.length)return cartList.innerHTML="<div>Cart empty</div>";
-    let tot=0;
-    cart.forEach((c,i)=>{
-      tot+=c.qty*c.price;
-      const row=document.createElement("div");
-      row.className="flex justify-between border p-2 rounded";
-      row.innerHTML=`<div>${c.name} • ${c.qty}${c.unit}</div><div>₹${(c.qty*c.price).toFixed(2)}</div>`;
-      cartList.appendChild(row);
+  function refreshCartUI(){
+    quickCart.innerHTML = '';
+    if(!cart.length) return quickCart.innerHTML = '<div class="muted">Cart empty</div>';
+    cart.forEach((it, idx) => {
+      const div = document.createElement('div');
+      div.className = 'flex justify-between items-center border rounded p-2';
+      div.innerHTML = `<div><b>${escapeHtml(it.name)}</b><div class="muted small">${it.qty} ${it.unit} • ₹ ${Number(it.price).toFixed(2)}</div></div>
+        <div class="flex gap-1">
+          <button class="px-2 bg-slate-200 rounded dec">-</button>
+          <button class="px-2 bg-slate-200 rounded inc">+</button>
+          <button class="px-2 bg-red-500 text-white rounded rm">X</button>
+        </div>`;
+      div.querySelector('.inc').onclick = ()=>{ cart[idx].qty = Number(cart[idx].qty) + 1; refreshCartUI(); };
+      div.querySelector('.dec').onclick = ()=>{ cart[idx].qty = Math.max(0.01, Number(cart[idx].qty) - 1); refreshCartUI(); };
+      div.querySelector('.rm').onclick = ()=>{ cart.splice(idx,1); refreshCartUI(); };
+      quickCart.appendChild(div);
     });
-    const t=document.createElement("div");
-    t.className="text-right font-bold";t.textContent="Total ₹"+tot.toFixed(2);
-    cartList.appendChild(t);
+    const total = cart.reduce((s,it)=> s + (it.qty * it.price), 0);
+    const foot = document.createElement('div'); foot.className='text-right font-semibold mt-2'; foot.textContent = 'Total ₹ ' + total.toFixed(2);
+    quickCart.appendChild(foot);
   }
 
-  $("checkout").onclick=()=>{
-    if(!cart.length)return alert("Cart empty");
-    const s={id:Date.now()+"",time:new Date().toLocaleString(),items:cart.map(x=>({...x}))};
-    sales.push(s); saveLS(LS_SALES,sales); cart=[]; refreshCart(); refreshHistory(); alert("Sale recorded");
-  };
-
-  function refreshHistory(){
-    const list=$("historyList"); list.innerHTML="";
-    if(!sales.length)return list.innerHTML="<div>No sales yet</div>";
-    sales.slice().reverse().forEach(s=>{
-      const div=document.createElement("div");
-      div.className="border rounded p-2";
-      div.innerHTML=`<div class='text-xs text-slate-500'>${s.time}</div>`+
-        s.items.map(i=>`<div>${i.name} ${i.qty}${i.unit} ₹${(i.qty*i.price).toFixed(2)}</div>`).join("");
-      list.appendChild(div);
+  checkoutBtn.onclick = ()=>{
+    if(!cart.length) return alert('Cart empty');
+    const sale = { id: uid(), time: Date.now(), timeStr: new Date().toLocaleString(), items: cart.map(x=>({...x})) };
+    sales.push(sale);
+    saveLS(LS_SALES(currentUID), sales);
+    // deduct stock if qty present for each product
+    cart.forEach(it=>{
+      const prod = products.find(p=>p.id===it.id);
+      if(prod && prod.qty !== '' && !isNaN(prod.qty)){ prod.qty = Number(prod.qty) - Number(it.qty); if(prod.qty < 0) prod.qty = 0; }
     });
-  }
-
-  // === Sync ===
-  syncBtn.onclick=async()=>{
-    if(!navigator.onLine)return alert("No internet");
-    if(!currentUser)return alert("Not logged in");
-    const ref=db.collection("vendors").doc(currentUser.uid);
-    await ref.set({updated:new Date()},{merge:true});
-    await ref.collection("products").get().then(q=>q.forEach(d=>d.ref.delete()));
-    for(const p of products){await ref.collection("products").doc(p.id).set(p);}
-    await ref.collection("sales").get().then(q=>q.forEach(d=>d.ref.delete()));
-    for(const s of sales){await ref.collection("sales").doc(s.id).set(s);}
-    alert("Data synced!");
+    saveLS(LS_PRODUCTS(currentUID), products);
+    cart = []; refreshCartUI(); refreshProductsUI(); refreshHistoryUI(); markDirty(true);
+    alert('Sale recorded locally');
   };
 
-  async function loadFromCloud(){
-    if(!currentUser)return;
-    const ref=db.collection("vendors").doc(currentUser.uid);
-    const prodSnap=await ref.collection("products").get();
-    const saleSnap=await ref.collection("sales").get();
-    const pArr=prodSnap.docs.map(d=>d.data());
-    const sArr=saleSnap.docs.map(d=>d.data());
-    if(pArr.length){products=pArr;saveLS(LS_PRODUCTS,products);}
-    if(sArr.length){sales=sArr;saveLS(LS_SALES,sales);}
-  }
+  function refreshHistoryUI() {
+  historyList.innerHTML = '';
+  if (!sales.length)
+    return (historyList.innerHTML = '<div class="muted">No sales yet</div>');
 
-  saleSearch.oninput=()=> {
-    const t=saleSearch.value.toLowerCase();
-    const filtered=products.filter(p=>p.name.toLowerCase().startsWith(t));
-    saleProduct.innerHTML=filtered.map(p=>`<option value='${p.id}'>${p.name} ₹${p.price}/${p.unit}</option>`).join("");
+  sales
+    .slice()
+    .reverse()
+    .forEach((s) => {
+      const d = document.createElement('div');
+      d.className = 'border rounded p-2';
+      const itemsHtml = s.items
+        .map(
+          (it) =>
+            `<div>${escapeHtml(it.name)} • ${it.qty}${it.unit} — ₹ ${(it.qty * it.price).toFixed(2)}</div>`
+        )
+        .join('');
+      const total = s.items.reduce(
+        (sum, it) => sum + it.qty * it.price,
+        0
+      );
+      d.innerHTML = `
+        <div class="small muted">${new Date(s.time).toLocaleString()}</div>
+        ${itemsHtml}
+        <div class="mt-2 text-right font-semibold border-t pt-1">Total: ₹ ${total.toFixed(2)}</div>
+      `;
+      historyList.appendChild(d);
+    });
+}
+
+
+  clearHistoryBtn.onclick = ()=>{ if(confirm('Clear history?')){ sales=[]; saveLS(LS_SALES(currentUID), sales); refreshHistoryUI(); markDirty(true); } };
+
+  // ---------- SYNC (manual) ----------
+  // Strategy: push local → cloud by deleting cloud subcollections then writing local docs,
+  // then pull cloud → local and replace local arrays. This keeps cloud in sync with local copy.
+  syncBtn.onclick = async ()=>{
+    if(!navigator.onLine) return alert('No internet connection');
+    if(!currentUID) return alert('Not signed in');
+    setSyncStatus(); // update UI
+    try{
+      syncStatusEl.textContent = 'Syncing...';
+      // vendor doc root
+      const vendorRef = db.collection('vendors').doc(currentUID);
+
+      // ensure vendor profile has shopName & email
+      await vendorRef.set({ shopName: currentShop || regShop.value || '', email: currentUser.email }, { merge:true });
+
+      // --- products: delete existing cloud docs then write local ---
+      const prodCol = vendorRef.collection('products');
+      const prodSnap = await prodCol.get();
+      const batchDeletes1 = [];
+      prodSnap.forEach(d => batchDeletes1.push(d.ref.delete()));
+      await Promise.all(batchDeletes1);
+
+      for(const p of products){
+        await prodCol.doc(p.id).set(p);
+      }
+
+      // --- sales: delete existing cloud docs then write local ---
+      const salesCol = vendorRef.collection('sales');
+      const salesSnap = await salesCol.get();
+      const batchDeletes2 = [];
+      salesSnap.forEach(d => batchDeletes2.push(d.ref.delete()));
+      await Promise.all(batchDeletes2);
+
+      for(const s of sales){
+        await salesCol.doc(s.id).set(s);
+      }
+
+      // --- pull cloud back and replace local (confirm cloud is authoritative now) ---
+      const cloudProds = (await prodCol.get()).docs.map(d=>d.data());
+      const cloudSales = (await salesCol.get()).docs.map(d=>d.data());
+      products = cloudProds;
+      sales = cloudSales;
+      saveLS(LS_PRODUCTS(currentUID), products);
+      saveLS(LS_SALES(currentUID), sales);
+      markDirty(false);
+      refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
+      syncStatusEl.textContent = 'Synced ✅';
+      alert('Sync completed');
+    } catch(err){
+      console.error(err);
+      alert('Sync failed: ' + (err.message || err));
+      markDirty(true);
+      setSyncStatus();
+    }
   };
+
+  // ---------- Utilities ----------
+  function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function setSyncStatus(){ setTimeout(()=>setSyncStatus(),0); } // small adapter (kept for compatibility)
+  function markDirty(v=true){ dirty = v; setSyncStatus(); syncStatusEl.textContent = (!navigator.onLine) ? 'Offline 🔴' : (dirty ? 'Pending 🟡' : 'Synced ✅'); }
+
+  // Update sync status on connectivity change
+  window.addEventListener('online', ()=> { setSyncStatus(); syncStatusEl.textContent = dirty ? 'Pending 🟡' : 'Synced ✅'; });
+  window.addEventListener('offline', ()=> { syncStatusEl.textContent = 'Offline 🔴'; });
+
+  // initial setSyncStatus
+  syncStatusEl.textContent = navigator.onLine ? 'Not signed in' : 'Offline 🔴';
+
+  // ---------- On load: local demo fallback only if no user (no global demo) ----------
+  // Note: actual data loads after login (namespaced by UID)
 
 })();
 </script>
