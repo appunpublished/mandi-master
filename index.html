@@ -400,59 +400,54 @@ const firebaseConfig = {
   // Strategy: push local → cloud by deleting cloud subcollections then writing local docs,
   // then pull cloud → local and replace local arrays. This keeps cloud in sync with local copy.
   syncBtn.onclick = async () => {
-  if (!navigator.onLine) return alert('No internet connection');
-  if (!currentUID) return alert('Not signed in');
+  if (!navigator.onLine) return alert("No internet connection");
+  if (!currentUID) return alert("Not signed in");
 
-  syncStatusEl.textContent = 'Syncing...';
-  const vendorRef = db.collection('vendors').doc(currentUID);
-  const prodCol = vendorRef.collection('products');
-  const salesCol = vendorRef.collection('sales');
+  const vendorRef = db.collection("vendors").doc(currentUID);
+  const prodCol = vendorRef.collection("products");
+  const salesCol = vendorRef.collection("sales");
+
+  const mode = confirm("OK = Push local data to cloud\nCancel = Pull cloud data to local");
+  //  true -> push, false -> pull
 
   try {
-    // --- If local has products/sales, push them ---
-    if (products.length > 0 || sales.length > 0) {
-      // Save vendor profile
-      await vendorRef.set({ shopName: currentShop || '', email: currentUser.email }, { merge: true });
+    syncStatusEl.textContent = "Syncing...";
 
-      // Overwrite cloud data only when local not empty
-      const prodSnap = await prodCol.get();
-      const delProds = [];
-      prodSnap.forEach(d => delProds.push(d.ref.delete()));
-      await Promise.all(delProds);
-      for (const p of products) await prodCol.doc(p.id).set(p);
-
-      const saleSnap = await salesCol.get();
-      const delSales = [];
-      saleSnap.forEach(d => delSales.push(d.ref.delete()));
-      await Promise.all(delSales);
-      for (const s of sales) await salesCol.doc(s.id).set(s);
-
-      console.log('Pushed local → cloud');
+    if (mode) {
+      // PUSH / MERGE
+      for (const p of products) {
+        await prodCol.doc(p.id).set(p, { merge: true });
+      }
+      for (const s of sales) {
+        await salesCol.doc(s.id).set(s, { merge: true });
+      }
+      alert("Pushed local data to cloud.");
     } else {
-      console.log('Local empty → skipping push');
+      // PULL / DOWNLOAD
+      const cloudProds = (await prodCol.get()).docs.map((d) => d.data());
+      const cloudSales = (await salesCol.get()).docs.map((d) => d.data());
+      if (cloudProds.length === 0 && cloudSales.length === 0) {
+        alert("No data found in cloud for this vendor.");
+      } else {
+        products = cloudProds;
+        sales = cloudSales;
+        saveLS(LS_PRODUCTS(currentUID), products);
+        saveLS(LS_SALES(currentUID), sales);
+        refreshProductsUI();
+        refreshHistoryUI();
+        alert("Downloaded data from cloud.");
+      }
     }
 
-    // --- Always pull cloud data after push ---
-    const cloudProds = (await prodCol.get()).docs.map(d => d.data());
-    const cloudSales = (await salesCol.get()).docs.map(d => d.data());
-
-    if (cloudProds.length > 0) products = cloudProds;
-    if (cloudSales.length > 0) sales = cloudSales;
-
-    saveLS(LS_PRODUCTS(currentUID), products);
-    saveLS(LS_SALES(currentUID), sales);
-
-    refreshProductsUI();
-    refreshHistoryUI();
     markDirty(false);
-    syncStatusEl.textContent = 'Synced ✅';
-    alert('Sync complete!');
+    syncStatusEl.textContent = "Synced ✅";
   } catch (err) {
     console.error(err);
-    alert('Sync failed: ' + err.message);
+    alert("Sync failed: " + err.message);
     markDirty(true);
   }
 };
+
 
 
   // ---------- Utilities ----------
