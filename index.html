@@ -3,24 +3,27 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Vendor POS — Multi-vendor (Manual Sync)</title>
+  <title>Vendor POS — Merge Sync (Firebase)</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase compat libs (simple for single-file apps) -->
+
+  <!-- Firebase compat libs (single-file apps) -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
   <style>
-    body { background:#f8fafc; font-family: Inter, system-ui, sans-serif; }
-    .big-btn{ padding:12px 16px; border-radius:10px; font-weight:600; }
-    .muted { color: #6b7280; }
-    .small { font-size:0.85rem; }
+    body { background:#f8fafc; font-family:Inter, system-ui, sans-serif; }
+    .big-btn{ padding:10px 14px; border-radius:10px; font-weight:600; }
+    .muted { color:#6b7280; }
+    .small { font-size:.85rem; }
+    .log { font-family: monospace; font-size: .9rem; white-space: pre-wrap; }
   </style>
 </head>
 <body class="min-h-screen flex items-start justify-center p-4">
 
-  <!-- LOGIN / REGISTER -->
+  <!-- AUTH -->
   <div id="authWrap" class="w-full max-w-md bg-white rounded-xl shadow p-6">
-    <h2 class="text-2xl font-bold mb-3 text-center">Vendor Login / Register</h2>
+    <h2 class="text-2xl font-bold mb-3 text-center">Vendor — Register / Login</h2>
     <input id="regShop" placeholder="Shop name (for registration)" class="w-full border rounded p-3 mb-2" />
     <input id="email" type="email" placeholder="Email" class="w-full border rounded p-3 mb-2" />
     <input id="password" type="password" placeholder="Password" class="w-full border rounded p-3 mb-3" />
@@ -28,7 +31,7 @@
       <button id="registerBtn" class="flex-1 big-btn bg-sky-500 text-white">Register</button>
       <button id="loginBtn" class="flex-1 big-btn bg-emerald-500 text-white">Login</button>
     </div>
-    <p class="text-xs muted mt-3">Register: create vendor account (Shop name stored). Login: fetch your vendor data from cloud (if any).</p>
+    <p class="text-xs muted mt-3">Register saves Shop name. Login downloads your vendor data (if present).</p>
   </div>
 
   <!-- APP -->
@@ -36,7 +39,7 @@
     <header class="flex items-center justify-between mb-4">
       <div>
         <div id="shopName" class="text-lg font-bold">Vendor POS</div>
-        <div id="vendorInfo" class="small muted">email / uid</div>
+        <div id="vendorInfo" class="small muted">email • uid</div>
       </div>
       <div class="flex items-center gap-2">
         <div id="syncStatus" class="px-3 py-1 rounded small">Offline 🔴</div>
@@ -103,6 +106,12 @@
           <button id="clearHistoryBtn" class="big-btn bg-red-500 text-white w-full">Clear History</button>
         </div>
       </section>
+
+      <hr class="my-3" />
+      <div>
+        <h4 class="font-semibold mb-2">Sync log</h4>
+        <div id="syncLog" class="log bg-slate-50 p-2 rounded min-h-[40px]"></div>
+      </div>
     </main>
   </div>
 
@@ -119,6 +128,7 @@ const firebaseConfig = {
   appId: "1:729715567147:web:2b04c4ff14fd09daa7186e",
   measurementId: "G-CG95QJFKGW"
 };
+
   // ---------- INIT ----------
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
@@ -126,10 +136,10 @@ const firebaseConfig = {
 
   // ---------- HELPERS & LS ----------
   const $ = id => document.getElementById(id);
-  const LS_PRODUCTS = keyFor => `vendor_products_${keyFor}`;
-  const LS_SALES = keyFor => `vendor_sales_${keyFor}`;
-  function loadLS(key){ try { return JSON.parse(localStorage.getItem(key)||'[]'); } catch(e){ return []; } }
-  function saveLS(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+  const LS_PRODUCTS = (uid) => `vendor_products_${uid}`;
+  const LS_SALES = (uid) => `vendor_sales_${uid}`;
+  function loadLS(key){ try{ return JSON.parse(localStorage.getItem(key) || '[]'); } catch(e){ return []; } }
+  function saveLS(key,val){ localStorage.setItem(key, JSON.stringify(val)); }
 
   // App state
   let currentUser = null;
@@ -138,106 +148,78 @@ const firebaseConfig = {
   let products = [];
   let sales = [];
   let cart = [];
-  let dirty = false; // true when local changes exist not yet synced
+  let dirty = false;
 
   // DOM refs
-  const authWrap = $('authWrap');
-  const appWrap = $('appWrap');
-  const shopNameEl = $('shopName');
-  const vendorInfoEl = $('vendorInfo');
-  const syncStatusEl = $('syncStatus');
-  const syncBtn = $('syncBtn');
-  const logoutBtn = $('logoutBtn');
-
-  // Tabs
+  const authWrap = $('authWrap'), appWrap = $('appWrap');
+  const shopNameEl = $('shopName'), vendorInfoEl = $('vendorInfo'), syncStatusEl = $('syncStatus'), syncBtn = $('syncBtn'), logoutBtn = $('logoutBtn');
   const tabProducts = $('tabProducts'), tabSales = $('tabSales'), tabHistory = $('tabHistory');
   const viewProducts = $('view-products'), viewSales = $('view-sales'), viewHistory = $('view-history');
-
-  // Product refs
   const p_name = $('p_name'), p_price = $('p_price'), p_qty = $('p_qty'), p_unit = $('p_unit');
   const saveProductBtn = $('saveProduct'), clearProductBtn = $('clearProduct'), productList = $('productList');
-
-  // Sales refs
   const saleSearch = $('saleSearch'), sale_product = $('sale_product'), sale_qty = $('sale_qty'), sale_unit_box = $('sale_unit_box');
   const addToCartBtn = $('addToCart'), openCartBtn = $('openCart'), quickCart = $('quickCart'), checkoutBtn = $('checkoutBtn');
+  const historyList = $('historyList'), clearHistoryBtn = $('clearHistoryBtn'), syncLog = $('syncLog');
+  const registerBtn = $('registerBtn'), loginBtn = $('loginBtn'), regShop = $('regShop'), emailInp = $('email'), passInp = $('password');
 
-  const historyList = $('historyList'), clearHistoryBtn = $('clearHistoryBtn');
+  // Utilities
+  function now(){ return Date.now(); }
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function setSyncStatusText(text){ syncStatusEl.textContent = text; }
+  function logSync(msg){ const time=(new Date()).toLocaleTimeString(); syncLog.textContent = (time + ' — ' + msg + '\n') + syncLog.textContent; }
 
-  // Auth controls
-  const registerBtn = $('registerBtn'), loginBtn = $('loginBtn');
-  const regShop = $('regShop'), emailInp = $('email'), passInp = $('password');
+  // Dirty flag
+  function markDirty(v=true){ dirty = v; syncStatusEl.textContent = (!navigator.onLine) ? 'Offline 🔴' : (dirty ? 'Pending 🟡' : 'Synced ✅'); }
 
-  // ---------- UI helpers ----------
-  function setSyncStatus() {
-    if (!navigator.onLine) { syncStatusEl.textContent = 'Offline 🔴'; syncStatusEl.style.background=''; return; }
-    if (!currentUID) { syncStatusEl.textContent = 'Not signed in'; syncStatusEl.style.background=''; return; }
-    if (dirty) { syncStatusEl.textContent = 'Pending 🟡'; syncStatusEl.style.background=''; }
-    else { syncStatusEl.textContent = 'Synced ✅'; syncStatusEl.style.background=''; }
-  }
-
-  function markDirty(v=true){ dirty = v; setSyncStatus(); }
-
-  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
-
-  // ---------- Auth flows ----------
+  // ---------- AUTH ----------
   registerBtn.onclick = async () => {
-    const email = emailInp.value.trim();
-    const pass = passInp.value;
-    const shop = regShop.value.trim();
-    if(!email || !pass || !shop) return alert('Enter shop name, email and password to register');
+    const shop = regShop.value.trim(); const email = emailInp.value.trim(); const pass = passInp.value;
+    if(!shop || !email || !pass) return alert('Enter shop, email & password to register.');
     try{
       const cred = await auth.createUserWithEmailAndPassword(email, pass);
       const user = cred.user;
-      // create vendor profile document
+      // create vendor profile
       await db.collection('vendors').doc(user.uid).set({
         shopName: shop,
         email: email,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge:true });
-      alert('Registered. Now log in.');
-    }catch(e){ alert(e.message); }
+      alert('Registered. Now login.');
+    } catch(e){ alert(e.message || e); }
   };
 
   loginBtn.onclick = async () => {
-    const email = emailInp.value.trim();
-    const pass = passInp.value;
-    if(!email||!pass) return alert('Enter email & password');
-    try{
-      await auth.signInWithEmailAndPassword(email, pass);
-    }catch(e){ alert(e.message); }
+    const email = emailInp.value.trim(); const pass = passInp.value;
+    if(!email || !pass) return alert('Enter email & password');
+    try{ await auth.signInWithEmailAndPassword(email, pass); } catch(e){ alert(e.message || e); }
   };
 
-  logoutBtn.onclick = async () => {
-    await auth.signOut();
-  };
+  logoutBtn.onclick = async () => { await auth.signOut(); };
 
   auth.onAuthStateChanged(async user => {
     if(user){
-      currentUser = user;
-      currentUID = user.uid;
-      // load vendor profile
-      const profDoc = await db.collection('vendors').doc(currentUID).get().catch(()=>null);
-      currentShop = (profDoc && profDoc.exists && profDoc.data().shopName) ? profDoc.data().shopName : 'Unknown Shop';
-      // load local data (namespaced by UID)
-      products = loadLS(LS_PRODUCTS(currentUID));
-      sales = loadLS(LS_SALES(currentUID));
-      // UI
-      authWrap.classList.add('hidden');
-      appWrap.classList.remove('hidden');
+      currentUser = user; currentUID = user.uid;
+      // fetch profile
+      try{
+        const prof = await db.collection('vendors').doc(currentUID).get();
+        currentShop = (prof.exists && prof.data().shopName) ? prof.data().shopName : 'Shop';
+      }catch(e){ currentShop = 'Shop'; }
+      // load namespaced local data
+      products = loadLS(LS_PRODUCTS(currentUID)); sales = loadLS(LS_SALES(currentUID));
+      appWrap.classList.remove('hidden'); authWrap.classList.add('hidden');
       shopNameEl.textContent = currentShop;
       vendorInfoEl.textContent = `${currentUser.email} • UID: ${currentUID}`;
-      setSyncStatus();
-      refreshProductsUI();
-      refreshCartUI();
-      refreshHistoryUI();
+      setSyncStatusText(navigator.onLine ? (dirty ? 'Pending 🟡' : 'Synced ✅') : 'Offline 🔴');
+      refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
+      logSync('Logged in — local data loaded');
     } else {
       currentUser = null; currentUID = null; currentShop = null;
-      authWrap.classList.remove('hidden');
-      appWrap.classList.add('hidden');
+      authWrap.classList.remove('hidden'); appWrap.classList.add('hidden');
     }
   });
 
-  // ---------- Tabs ----------
+  // ---------- UI Tabs ----------
   function show(tab){
     viewProducts.classList.add('hidden'); viewSales.classList.add('hidden'); viewHistory.classList.add('hidden');
     tabProducts.classList.remove('bg-emerald-200'); tabSales.classList.remove('bg-emerald-200'); tabHistory.classList.remove('bg-emerald-200');
@@ -248,46 +230,45 @@ const firebaseConfig = {
   tabProducts.onclick=()=>show('products'); tabSales.onclick=()=>show('sales'); tabHistory.onclick=()=>show('history');
   show('products');
 
-  // ---------- Products UI ----------
+  // ---------- PRODUCTS CRUD (local only until sync) ----------
   let editProductId = null;
   saveProductBtn.onclick = () => {
     const name = p_name.value.trim(); if(!name) return alert('Name required');
-    const price = Number(p_price.value) || 0; const qtyVal = p_qty.value === '' ? '' : Number(p_qty.value);
-    const unit = p_unit.value;
+    const price = Number(p_price.value) || 0; const qty = p_qty.value === '' ? '' : Number(p_qty.value); const unit = p_unit.value;
     if(editProductId){
-      const idx = products.findIndex(x=>x.id===editProductId);
-      if(idx>=0) products[idx] = {...products[idx], name, price, qty: qtyVal, unit};
+      const i = products.findIndex(x => x.id === editProductId);
+      if(i>=0) products[i] = { ...products[i], name, price, qty, unit, lastUpdated: now() };
       editProductId = null;
     } else {
-      products.push({ id: uid(), name, price, qty: qtyVal, unit });
+      products.push({ id: uid(), name, price, qty, unit, lastUpdated: now() });
     }
-    // save local
     saveLS(LS_PRODUCTS(currentUID), products);
     markDirty(true);
     refreshProductsUI();
-    p_name.value = ''; p_price.value=''; p_qty.value='';
+    p_name.value=''; p_price.value=''; p_qty.value='';
   };
+
   clearProductBtn.onclick = ()=>{ editProductId=null; p_name.value=''; p_price.value=''; p_qty.value=''; };
 
   function refreshProductsUI(){
     productList.innerHTML = '';
-    if(!products.length) { productList.innerHTML = '<div class="muted">No products</div>'; refreshSaleProducts(); return; }
+    if(!products.length){ productList.innerHTML = '<div class="muted">No products</div>'; refreshSaleProducts(); return; }
     products.forEach(p=>{
       const row = document.createElement('div');
       row.className = 'flex justify-between items-center border rounded p-2';
-      row.innerHTML = `<div><div class="font-semibold">${escapeHtml(p.name)}</div><div class="small muted">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty!==''? ' • ' + p.qty + ' ' + p.unit : ''}</div></div>
+      row.innerHTML = `<div><div class="font-semibold">${escapeHtml(p.name)}</div><div class="small muted">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty!=='' ? ' • ' + p.qty + ' ' + p.unit : ''}</div></div>
         <div class="flex gap-2">
           <button class="bg-sky-500 text-white px-2 rounded edit">Edit</button>
           <button class="bg-red-500 text-white px-2 rounded del">Del</button>
         </div>`;
-      row.querySelector('.edit').onclick = ()=>{ editProductId = p.id; p_name.value = p.name; p_price.value = p.price; p_qty.value = p.qty; p_unit.value = p.unit; window.scrollTo({top:0, behavior:'smooth'}); };
+      row.querySelector('.edit').onclick = ()=>{ editProductId = p.id; p_name.value = p.name; p_price.value = p.price; p_qty.value = p.qty; p_unit.value = p.unit; window.scrollTo({top:0,behavior:'smooth'}); };
       row.querySelector('.del').onclick = ()=>{ if(confirm('Delete product?')){ products = products.filter(x=>x.id!==p.id); saveLS(LS_PRODUCTS(currentUID), products); markDirty(true); refreshProductsUI(); } };
       productList.appendChild(row);
     });
     refreshSaleProducts();
   }
 
-  // ---------- Sales UI ----------
+  // ---------- SALES (local) ----------
   saleSearch.oninput = ()=> refreshSaleProducts(saleSearch.value);
   function refreshSaleProducts(filterTerm=''){
     const term = (filterTerm||'').trim().toLowerCase();
@@ -334,136 +315,182 @@ const firebaseConfig = {
 
   checkoutBtn.onclick = ()=>{
     if(!cart.length) return alert('Cart empty');
-    const sale = { id: uid(), time: Date.now(), timeStr: new Date().toLocaleString(), items: cart.map(x=>({...x})) };
+    const sale = { id: uid(), time: now(), timeStr: new Date().toLocaleString(), items: cart.map(x=>({...x})), lastUpdated: now() };
     sales.push(sale);
     saveLS(LS_SALES(currentUID), sales);
-    // deduct stock if qty present for each product
+    // deduct stock if provided
     cart.forEach(it=>{
       const prod = products.find(p=>p.id===it.id);
-      if(prod && prod.qty !== '' && !isNaN(prod.qty)){ prod.qty = Number(prod.qty) - Number(it.qty); if(prod.qty < 0) prod.qty = 0; }
+      if(prod && prod.qty !== '' && !isNaN(prod.qty)){ prod.qty = Number(prod.qty) - Number(it.qty); if(prod.qty < 0) prod.qty = 0; prod.lastUpdated = now(); }
     });
     saveLS(LS_PRODUCTS(currentUID), products);
     cart = []; refreshCartUI(); refreshProductsUI(); refreshHistoryUI(); markDirty(true);
     alert('Sale recorded locally');
   };
 
-  function refreshHistoryUI() {
-  historyList.innerHTML = '';
+  function refreshHistoryUI(){
+    historyList.innerHTML = '';
+    if(!sales.length) { historyList.innerHTML = '<div class="muted">No sales yet</div>'; return; }
 
-  if (!sales.length) {
-    historyList.innerHTML = '<div class="muted">No sales yet</div>';
-    return;
-  }
+    // Grand total
+    const grandTotal = sales.reduce((sum, s) => sum + s.items.reduce((st, it) => st + it.qty * it.price, 0), 0);
+    const summaryDiv = document.createElement('div');
+    summaryDiv.className = 'p-2 mb-2 rounded bg-emerald-100 text-emerald-800 font-semibold flex justify-between';
+    summaryDiv.innerHTML = `<span>Grand Total Sales</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
+    historyList.appendChild(summaryDiv);
 
-  // Calculate grand total of all sales
-  const grandTotal = sales.reduce((sum, s) => {
-    const saleTotal = s.items.reduce((st, it) => st + it.qty * it.price, 0);
-    return sum + saleTotal;
-  }, 0);
-
-  // Grand total summary at top
-  const summaryDiv = document.createElement('div');
-  summaryDiv.className =
-    'p-2 mb-2 rounded bg-emerald-100 text-emerald-800 font-semibold flex justify-between';
-  summaryDiv.innerHTML = `<span>Grand Total Sales</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
-  historyList.appendChild(summaryDiv);
-
-  // Individual sale entries
-  sales
-    .slice()
-    .reverse()
-    .forEach((s, index) => {
-      const d = document.createElement('div');
-      d.className = 'border rounded p-2 bg-white';
-      const itemsHtml = s.items
-        .map(
-          (it) =>
-            `<div>${escapeHtml(it.name)} • ${it.qty}${it.unit} — ₹ ${(it.qty * it.price).toFixed(2)}</div>`
-        )
-        .join('');
-
-      const total = s.items.reduce((sum, it) => sum + it.qty * it.price, 0);
-      d.innerHTML = `
-        <div class="small muted">${new Date(s.time).toLocaleString()}</div>
-        ${itemsHtml}
-        <div class="mt-2 text-right font-semibold border-t pt-1">Total: ₹ ${total.toFixed(2)}</div>
-      `;
+    sales.slice().reverse().forEach(s=>{
+      const d = document.createElement('div'); d.className='border rounded p-2 bg-white mb-2';
+      const itemsHtml = s.items.map(it => `<div>${escapeHtml(it.name)} • ${it.qty}${it.unit} — ₹ ${(it.qty*it.price).toFixed(2)}</div>`).join('');
+      const total = s.items.reduce((sum,it)=> sum + it.qty * it.price, 0);
+      d.innerHTML = `<div class="small muted">${new Date(s.time).toLocaleString()}</div>${itemsHtml}<div class="mt-2 text-right font-semibold border-t pt-1">Total: ₹ ${total.toFixed(2)}</div>`;
       historyList.appendChild(d);
     });
-}
-
-
-
-  clearHistoryBtn.onclick = ()=>{ if(confirm('Clear history?')){ sales=[]; saveLS(LS_SALES(currentUID), sales); refreshHistoryUI(); markDirty(true); } };
-
-  // ---------- SYNC (manual) ----------
-  // Strategy: push local → cloud by deleting cloud subcollections then writing local docs,
-  // then pull cloud → local and replace local arrays. This keeps cloud in sync with local copy.
-  syncBtn.onclick = async () => {
-  if (!navigator.onLine) return alert("No internet connection");
-  if (!currentUID) return alert("Not signed in");
-
-  const vendorRef = db.collection("vendors").doc(currentUID);
-  const prodCol = vendorRef.collection("products");
-  const salesCol = vendorRef.collection("sales");
-
-  const mode = confirm("OK = Push local data to cloud\nCancel = Pull cloud data to local");
-  //  true -> push, false -> pull
-
-  try {
-    syncStatusEl.textContent = "Syncing...";
-
-    if (mode) {
-      // PUSH / MERGE
-      for (const p of products) {
-        await prodCol.doc(p.id).set(p, { merge: true });
-      }
-      for (const s of sales) {
-        await salesCol.doc(s.id).set(s, { merge: true });
-      }
-      alert("Pushed local data to cloud.");
-    } else {
-      // PULL / DOWNLOAD
-      const cloudProds = (await prodCol.get()).docs.map((d) => d.data());
-      const cloudSales = (await salesCol.get()).docs.map((d) => d.data());
-      if (cloudProds.length === 0 && cloudSales.length === 0) {
-        alert("No data found in cloud for this vendor.");
-      } else {
-        products = cloudProds;
-        sales = cloudSales;
-        saveLS(LS_PRODUCTS(currentUID), products);
-        saveLS(LS_SALES(currentUID), sales);
-        refreshProductsUI();
-        refreshHistoryUI();
-        alert("Downloaded data from cloud.");
-      }
-    }
-
-    markDirty(false);
-    syncStatusEl.textContent = "Synced ✅";
-  } catch (err) {
-    console.error(err);
-    alert("Sync failed: " + err.message);
-    markDirty(true);
   }
-};
 
+  clearHistoryBtn.onclick = ()=>{ if(confirm('Clear history?')){ sales = []; saveLS(LS_SALES(currentUID), sales); refreshHistoryUI(); markDirty(true); } };
 
+  // ---------- MERGE SYNC (safe two-way) ----------
+  // Strategy:
+  // 1) download cloud items
+  // 2) merge cloud <-> local using lastUpdated (number ms)
+  // 3) write back changed/new local items to cloud (no deletes)
+  // 4) update local storage with merged set
+  syncBtn.onclick = async () => {
+    if(!navigator.onLine) return alert('No internet connection');
+    if(!currentUID) return alert('Not signed in');
 
-  // ---------- Utilities ----------
-  function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function setSyncStatus(){ setTimeout(()=>setSyncStatus(),0); } // small adapter (kept for compatibility)
-  function markDirty(v=true){ dirty = v; setSyncStatus(); syncStatusEl.textContent = (!navigator.onLine) ? 'Offline 🔴' : (dirty ? 'Pending 🟡' : 'Synced ✅'); }
+    const vendorRef = db.collection('vendors').doc(currentUID);
+    const prodCol = vendorRef.collection('products');
+    const salesCol = vendorRef.collection('sales');
 
-  // Update sync status on connectivity change
-  window.addEventListener('online', ()=> { setSyncStatus(); syncStatusEl.textContent = dirty ? 'Pending 🟡' : 'Synced ✅'; });
-  window.addEventListener('offline', ()=> { syncStatusEl.textContent = 'Offline 🔴'; });
+    syncLog.textContent = ''; // clear small log area
+    logSync('Starting sync (merge mode)...');
 
-  // initial setSyncStatus
+    try{
+      setSyncStatusText('Syncing...');
+      // Pull cloud data
+      const cloudProdSnap = await prodCol.get();
+      const cloudSalesSnap = await salesCol.get();
+      const cloudProds = cloudProdSnap.docs.map(d => d.data());
+      const cloudSales = cloudSalesSnap.docs.map(d => d.data());
+      logSync(`Pulled ${cloudProds.length} products, ${cloudSales.length} sales from cloud.`);
+
+      // Merge products
+      const mergedProductsMap = {};
+      // add cloud
+      for(const cp of cloudProds){
+        mergedProductsMap[cp.id] = {...cp}; // assume cp has lastUpdated
+      }
+      // merge local: prefer item with higher lastUpdated
+      for(const lp of products){
+        if(!lp.id) { lp.id = uid(); lp.lastUpdated = lp.lastUpdated || now(); }
+        const existing = mergedProductsMap[lp.id];
+        if(!existing) {
+          mergedProductsMap[lp.id] = {...lp};
+          logSync(`Product -> will upload new: ${lp.name}`);
+        } else {
+          const cloudLU = existing.lastUpdated || 0;
+          const localLU = lp.lastUpdated || 0;
+          if(localLU > cloudLU){
+            mergedProductsMap[lp.id] = {...lp};
+            logSync(`Product -> local newer, will upload: ${lp.name}`);
+          } else if (cloudLU > localLU){
+            // cloud is newer; will update local after merge
+            logSync(`Product -> cloud newer, will update local: ${existing.name}`);
+          }
+        }
+      }
+      const mergedProducts = Object.values(mergedProductsMap);
+
+      // Merge sales (similar)
+      const mergedSalesMap = {};
+      for(const cs of cloudSales){ mergedSalesMap[cs.id] = {...cs}; }
+      for(const ls of sales){
+        if(!ls.id){ ls.id = uid(); ls.lastUpdated = ls.lastUpdated || now(); }
+        const existing = mergedSalesMap[ls.id];
+        if(!existing){
+          mergedSalesMap[ls.id] = {...ls};
+          logSync(`Sale -> will upload new: ${ls.id}`);
+        } else {
+          const cloudLU = existing.lastUpdated || 0;
+          const localLU = ls.lastUpdated || 0;
+          if(localLU > cloudLU){
+            mergedSalesMap[ls.id] = {...ls};
+            logSync(`Sale -> local newer, will upload: ${ls.id}`);
+          } else if(cloudLU > localLU){
+            logSync(`Sale -> cloud newer, will update local: ${existing.id}`);
+          }
+        }
+      }
+      const mergedSales = Object.values(mergedSalesMap);
+
+      // Write back changes to cloud (only items where local is newer or missing in cloud)
+      let uploadedProducts = 0, uploadedSales = 0;
+      // products: for each merged product, if local has it and local.lastUpdated >= cloud.lastUpdated -> set
+      for(const p of mergedProducts){
+        const cloudItem = cloudProds.find(x=>x.id===p.id);
+        const localItem = products.find(x=>x.id===p.id);
+        const localLU = (localItem && localItem.lastUpdated) ? localItem.lastUpdated : 0;
+        const cloudLU = (cloudItem && cloudItem.lastUpdated) ? cloudItem.lastUpdated : 0;
+        // upload if local exists and is newer or cloud missing
+        if(localItem && localLU >= cloudLU){
+          await prodCol.doc(p.id).set(p, { merge: true });
+          uploadedProducts++;
+        }
+      }
+      // sales
+      for(const s of mergedSales){
+        const cloudItem = cloudSales.find(x=>x.id===s.id);
+        const localItem = sales.find(x=>x.id===s.id);
+        const localLU = (localItem && localItem.lastUpdated) ? localItem.lastUpdated : 0;
+        const cloudLU = (cloudItem && cloudItem.lastUpdated) ? cloudItem.lastUpdated : 0;
+        if(localItem && localLU >= cloudLU){
+          await salesCol.doc(s.id).set(s, { merge: true });
+          uploadedSales++;
+        }
+      }
+
+      // Save merged to local
+      products = mergedProducts.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+      sales = mergedSales.sort((a,b)=> b.time - a.time); // newest first
+      saveLS(LS_PRODUCTS(currentUID), products);
+      saveLS(LS_SALES(currentUID), sales);
+
+      refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
+      markDirty(false);
+      setSyncStatusText('Synced ✅');
+
+      const summary = `Sync complete. Uploaded products: ${uploadedProducts}, uploaded sales: ${uploadedSales}. Merged totals — products: ${products.length}, sales: ${sales.length}.`;
+      logSync(summary);
+      alert('Sync completed: ' + summary);
+    } catch(err){
+      console.error(err);
+      logSync('Sync error: ' + (err.message || err));
+      setSyncStatusText('Sync failed');
+      markDirty(true);
+      alert('Sync failed: ' + (err.message || err));
+    }
+  };
+
+  // ---------- connectivity handlers ----------
+  window.addEventListener('online', ()=> { syncStatusEl.textContent = dirty ? 'Pending 🟡' : 'Synced ✅'; logSync('Online'); });
+  window.addEventListener('offline', ()=> { syncStatusEl.textContent = 'Offline 🔴'; logSync('Offline'); });
+
+  // ---------- initial state ----------
   syncStatusEl.textContent = navigator.onLine ? 'Not signed in' : 'Offline 🔴';
+  logSync('App loaded');
 
-  // ---------- On load: local demo fallback only if no user (no global demo) ----------
-  // Note: actual data loads after login (namespaced by UID)
+  // ---------- small safety: ensure lastUpdated on old local items (upgrade) ----------
+  function upgradeLocalTimestamps(){
+    let changed = false;
+    products.forEach(p => { if(!p.lastUpdated){ p.lastUpdated = p._createdAt || now(); changed = true; }});
+    sales.forEach(s => { if(!s.lastUpdated){ s.lastUpdated = s._createdAt || now(); changed = true; }});
+    if(changed){ saveLS(LS_PRODUCTS(currentUID), products); saveLS(LS_SALES(currentUID), sales); markDirty(true); }
+  }
+
+  // call after login when products/sales loaded
+  // upgradeLocalTimestamps(); // called in onAuthStateChanged implicitly by previous load
 
 })();
 </script>

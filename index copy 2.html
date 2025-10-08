@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Vendor POS — Multi-vendor (Manual Sync)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase compat libs (simple for single-file apps) -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <style>
+    body { background:#f8fafc; font-family: Inter, system-ui, sans-serif; }
+    .big-btn{ padding:12px 16px; border-radius:10px; font-weight:600; }
+    .muted { color: #6b7280; }
+    .small { font-size:0.85rem; }
+  </style>
+</head>
+<body class="min-h-screen flex items-start justify-center p-4">
+
+  <!-- LOGIN / REGISTER -->
+  <div id="authWrap" class="w-full max-w-md bg-white rounded-xl shadow p-6">
+    <h2 class="text-2xl font-bold mb-3 text-center">Vendor Login / Register</h2>
+    <input id="regShop" placeholder="Shop name (for registration)" class="w-full border rounded p-3 mb-2" />
+    <input id="email" type="email" placeholder="Email" class="w-full border rounded p-3 mb-2" />
+    <input id="password" type="password" placeholder="Password" class="w-full border rounded p-3 mb-3" />
+    <div class="flex gap-2">
+      <button id="registerBtn" class="flex-1 big-btn bg-sky-500 text-white">Register</button>
+      <button id="loginBtn" class="flex-1 big-btn bg-emerald-500 text-white">Login</button>
+    </div>
+    <p class="text-xs muted mt-3">Register: create vendor account (Shop name stored). Login: fetch your vendor data from cloud (if any).</p>
+  </div>
+
+  <!-- APP -->
+  <div id="appWrap" class="hidden w-full max-w-xl">
+    <header class="flex items-center justify-between mb-4">
+      <div>
+        <div id="shopName" class="text-lg font-bold">Vendor POS</div>
+        <div id="vendorInfo" class="small muted">email / uid</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <div id="syncStatus" class="px-3 py-1 rounded small">Offline 🔴</div>
+        <button id="syncBtn" class="big-btn bg-amber-400 text-white small">Sync</button>
+        <button id="logoutBtn" class="big-btn bg-red-500 text-white small">Logout</button>
+      </div>
+    </header>
+
+    <nav class="flex gap-2 mb-4">
+      <button id="tabProducts" class="flex-1 big-btn bg-emerald-100">Products</button>
+      <button id="tabSales" class="flex-1 big-btn bg-slate-100">Sales</button>
+      <button id="tabHistory" class="flex-1 big-btn bg-slate-100">History</button>
+    </nav>
+
+    <main class="bg-white rounded-xl p-4 shadow">
+      <!-- PRODUCTS -->
+      <section id="view-products">
+        <h3 class="font-semibold mb-2">Add / Edit Product</h3>
+        <div class="space-y-2">
+          <input id="p_name" placeholder="Name (e.g., Tomato)" class="w-full border rounded p-2" />
+          <div class="flex gap-2">
+            <input id="p_price" type="number" placeholder="Price (₹)" class="flex-1 border rounded p-2" />
+            <select id="p_unit" class="border rounded p-2 w-36">
+              <option value="kg">kg</option><option value="g">g</option><option value="piece">piece</option><option value="dozen">dozen</option>
+            </select>
+            <input id="p_qty" type="number" placeholder="Qty (opt)" class="w-28 border rounded p-2" />
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button id="saveProduct" class="flex-1 big-btn bg-emerald-500 text-white">Save</button>
+            <button id="clearProduct" class="flex-1 big-btn bg-slate-200">Clear</button>
+          </div>
+        </div>
+        <hr class="my-3" />
+        <h4 class="font-semibold mb-2">Products</h4>
+        <div id="productList" class="space-y-2 max-h-64 overflow-auto"></div>
+      </section>
+
+      <!-- SALES -->
+      <section id="view-sales" class="hidden">
+        <h3 class="font-semibold mb-2">Record Sale</h3>
+        <input id="saleSearch" placeholder="Type first letters to search" class="w-full border rounded p-2 mb-2" />
+        <select id="sale_product" class="w-full border rounded p-2 mb-2"></select>
+        <div class="flex gap-2">
+          <input id="sale_qty" type="number" placeholder="Quantity" class="flex-1 border rounded p-2" />
+          <div id="sale_unit_box" class="w-28 border rounded p-2 text-center muted">unit</div>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button id="addToCart" class="flex-1 big-btn bg-amber-400 text-white">Add to Cart</button>
+          <button id="openCart" class="flex-1 big-btn bg-slate-200">Open Cart</button>
+        </div>
+        <hr class="my-3" />
+        <h4 class="font-semibold">Cart</h4>
+        <div id="quickCart" class="space-y-2 max-h-56 overflow-auto"></div>
+        <div class="mt-3">
+          <button id="checkoutBtn" class="w-full big-btn bg-emerald-600 text-white">Checkout</button>
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="view-history" class="hidden">
+        <h3 class="font-semibold mb-2">Sales History</h3>
+        <div id="historyList" class="space-y-2 max-h-72 overflow-auto"></div>
+        <div class="mt-3">
+          <button id="clearHistoryBtn" class="big-btn bg-red-500 text-white w-full">Clear History</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+<script>
+(async function(){
+  // ---------- FIREBASE CONFIG ----------
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
+  authDomain: "vendor-pos.firebaseapp.com",
+  projectId: "vendor-pos",
+  storageBucket: "vendor-pos.firebasestorage.app",
+  messagingSenderId: "729715567147",
+  appId: "1:729715567147:web:2b04c4ff14fd09daa7186e",
+  measurementId: "G-CG95QJFKGW"
+};
+  // ---------- INIT ----------
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  // ---------- HELPERS & LS ----------
+  const $ = id => document.getElementById(id);
+  const LS_PRODUCTS = keyFor => `vendor_products_${keyFor}`;
+  const LS_SALES = keyFor => `vendor_sales_${keyFor}`;
+  function loadLS(key){ try { return JSON.parse(localStorage.getItem(key)||'[]'); } catch(e){ return []; } }
+  function saveLS(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+
+  // App state
+  let currentUser = null;
+  let currentUID = null;
+  let currentShop = null;
+  let products = [];
+  let sales = [];
+  let cart = [];
+  let dirty = false; // true when local changes exist not yet synced
+
+  // DOM refs
+  const authWrap = $('authWrap');
+  const appWrap = $('appWrap');
+  const shopNameEl = $('shopName');
+  const vendorInfoEl = $('vendorInfo');
+  const syncStatusEl = $('syncStatus');
+  const syncBtn = $('syncBtn');
+  const logoutBtn = $('logoutBtn');
+
+  // Tabs
+  const tabProducts = $('tabProducts'), tabSales = $('tabSales'), tabHistory = $('tabHistory');
+  const viewProducts = $('view-products'), viewSales = $('view-sales'), viewHistory = $('view-history');
+
+  // Product refs
+  const p_name = $('p_name'), p_price = $('p_price'), p_qty = $('p_qty'), p_unit = $('p_unit');
+  const saveProductBtn = $('saveProduct'), clearProductBtn = $('clearProduct'), productList = $('productList');
+
+  // Sales refs
+  const saleSearch = $('saleSearch'), sale_product = $('sale_product'), sale_qty = $('sale_qty'), sale_unit_box = $('sale_unit_box');
+  const addToCartBtn = $('addToCart'), openCartBtn = $('openCart'), quickCart = $('quickCart'), checkoutBtn = $('checkoutBtn');
+
+  const historyList = $('historyList'), clearHistoryBtn = $('clearHistoryBtn');
+
+  // Auth controls
+  const registerBtn = $('registerBtn'), loginBtn = $('loginBtn');
+  const regShop = $('regShop'), emailInp = $('email'), passInp = $('password');
+
+  // ---------- UI helpers ----------
+  function setSyncStatus() {
+    if (!navigator.onLine) { syncStatusEl.textContent = 'Offline 🔴'; syncStatusEl.style.background=''; return; }
+    if (!currentUID) { syncStatusEl.textContent = 'Not signed in'; syncStatusEl.style.background=''; return; }
+    if (dirty) { syncStatusEl.textContent = 'Pending 🟡'; syncStatusEl.style.background=''; }
+    else { syncStatusEl.textContent = 'Synced ✅'; syncStatusEl.style.background=''; }
+  }
+
+  function markDirty(v=true){ dirty = v; setSyncStatus(); }
+
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+
+  // ---------- Auth flows ----------
+  registerBtn.onclick = async () => {
+    const email = emailInp.value.trim();
+    const pass = passInp.value;
+    const shop = regShop.value.trim();
+    if(!email || !pass || !shop) return alert('Enter shop name, email and password to register');
+    try{
+      const cred = await auth.createUserWithEmailAndPassword(email, pass);
+      const user = cred.user;
+      // create vendor profile document
+      await db.collection('vendors').doc(user.uid).set({
+        shopName: shop,
+        email: email,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge:true });
+      alert('Registered. Now log in.');
+    }catch(e){ alert(e.message); }
+  };
+
+  loginBtn.onclick = async () => {
+    const email = emailInp.value.trim();
+    const pass = passInp.value;
+    if(!email||!pass) return alert('Enter email & password');
+    try{
+      await auth.signInWithEmailAndPassword(email, pass);
+    }catch(e){ alert(e.message); }
+  };
+
+  logoutBtn.onclick = async () => {
+    await auth.signOut();
+  };
+
+  auth.onAuthStateChanged(async user => {
+    if(user){
+      currentUser = user;
+      currentUID = user.uid;
+      // load vendor profile
+      const profDoc = await db.collection('vendors').doc(currentUID).get().catch(()=>null);
+      currentShop = (profDoc && profDoc.exists && profDoc.data().shopName) ? profDoc.data().shopName : 'Unknown Shop';
+      // load local data (namespaced by UID)
+      products = loadLS(LS_PRODUCTS(currentUID));
+      sales = loadLS(LS_SALES(currentUID));
+      // UI
+      authWrap.classList.add('hidden');
+      appWrap.classList.remove('hidden');
+      shopNameEl.textContent = currentShop;
+      vendorInfoEl.textContent = `${currentUser.email} • UID: ${currentUID}`;
+      setSyncStatus();
+      refreshProductsUI();
+      refreshCartUI();
+      refreshHistoryUI();
+    } else {
+      currentUser = null; currentUID = null; currentShop = null;
+      authWrap.classList.remove('hidden');
+      appWrap.classList.add('hidden');
+    }
+  });
+
+  // ---------- Tabs ----------
+  function show(tab){
+    viewProducts.classList.add('hidden'); viewSales.classList.add('hidden'); viewHistory.classList.add('hidden');
+    tabProducts.classList.remove('bg-emerald-200'); tabSales.classList.remove('bg-emerald-200'); tabHistory.classList.remove('bg-emerald-200');
+    if(tab==='products'){ viewProducts.classList.remove('hidden'); tabProducts.classList.add('bg-emerald-200'); }
+    if(tab==='sales'){ viewSales.classList.remove('hidden'); tabSales.classList.add('bg-emerald-200'); }
+    if(tab==='history'){ viewHistory.classList.remove('hidden'); tabHistory.classList.add('bg-emerald-200'); }
+  }
+  tabProducts.onclick=()=>show('products'); tabSales.onclick=()=>show('sales'); tabHistory.onclick=()=>show('history');
+  show('products');
+
+  // ---------- Products UI ----------
+  let editProductId = null;
+  saveProductBtn.onclick = () => {
+    const name = p_name.value.trim(); if(!name) return alert('Name required');
+    const price = Number(p_price.value) || 0; const qtyVal = p_qty.value === '' ? '' : Number(p_qty.value);
+    const unit = p_unit.value;
+    if(editProductId){
+      const idx = products.findIndex(x=>x.id===editProductId);
+      if(idx>=0) products[idx] = {...products[idx], name, price, qty: qtyVal, unit};
+      editProductId = null;
+    } else {
+      products.push({ id: uid(), name, price, qty: qtyVal, unit });
+    }
+    // save local
+    saveLS(LS_PRODUCTS(currentUID), products);
+    markDirty(true);
+    refreshProductsUI();
+    p_name.value = ''; p_price.value=''; p_qty.value='';
+  };
+  clearProductBtn.onclick = ()=>{ editProductId=null; p_name.value=''; p_price.value=''; p_qty.value=''; };
+
+  function refreshProductsUI(){
+    productList.innerHTML = '';
+    if(!products.length) { productList.innerHTML = '<div class="muted">No products</div>'; refreshSaleProducts(); return; }
+    products.forEach(p=>{
+      const row = document.createElement('div');
+      row.className = 'flex justify-between items-center border rounded p-2';
+      row.innerHTML = `<div><div class="font-semibold">${escapeHtml(p.name)}</div><div class="small muted">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty!==''? ' • ' + p.qty + ' ' + p.unit : ''}</div></div>
+        <div class="flex gap-2">
+          <button class="bg-sky-500 text-white px-2 rounded edit">Edit</button>
+          <button class="bg-red-500 text-white px-2 rounded del">Del</button>
+        </div>`;
+      row.querySelector('.edit').onclick = ()=>{ editProductId = p.id; p_name.value = p.name; p_price.value = p.price; p_qty.value = p.qty; p_unit.value = p.unit; window.scrollTo({top:0, behavior:'smooth'}); };
+      row.querySelector('.del').onclick = ()=>{ if(confirm('Delete product?')){ products = products.filter(x=>x.id!==p.id); saveLS(LS_PRODUCTS(currentUID), products); markDirty(true); refreshProductsUI(); } };
+      productList.appendChild(row);
+    });
+    refreshSaleProducts();
+  }
+
+  // ---------- Sales UI ----------
+  saleSearch.oninput = ()=> refreshSaleProducts(saleSearch.value);
+  function refreshSaleProducts(filterTerm=''){
+    const term = (filterTerm||'').trim().toLowerCase();
+    let list = products.slice();
+    if(term){
+      const starts = list.filter(p => p.name.toLowerCase().startsWith(term));
+      const includes = list.filter(p => !p.name.toLowerCase().startsWith(term) && p.name.toLowerCase().includes(term));
+      list = starts.concat(includes);
+    }
+    sale_product.innerHTML = list.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ₹${Number(p.price).toFixed(2)}/${p.unit}</option>`).join('') || '<option value="">No match</option>';
+    const sel = products.find(x => x.id === sale_product.value) || products[0];
+    sale_unit_box.textContent = sel ? sel.unit : '—';
+  }
+
+  addToCartBtn.onclick = ()=>{
+    const pid = sale_product.value; const p = products.find(x=>x.id===pid); if(!p) return alert('Select product');
+    const q = Number(sale_qty.value); if(!q || q<=0) return alert('Enter qty');
+    const existing = cart.find(x=>x.id===p.id && x.unit===p.unit);
+    if(existing) existing.qty = Number(existing.qty) + q; else cart.push({ id: p.id, name: p.name, price: p.price, qty: q, unit: p.unit });
+    sale_qty.value=''; refreshCartUI();
+  };
+
+  function refreshCartUI(){
+    quickCart.innerHTML = '';
+    if(!cart.length) return quickCart.innerHTML = '<div class="muted">Cart empty</div>';
+    cart.forEach((it, idx) => {
+      const div = document.createElement('div');
+      div.className = 'flex justify-between items-center border rounded p-2';
+      div.innerHTML = `<div><b>${escapeHtml(it.name)}</b><div class="muted small">${it.qty} ${it.unit} • ₹ ${Number(it.price).toFixed(2)}</div></div>
+        <div class="flex gap-1">
+          <button class="px-2 bg-slate-200 rounded dec">-</button>
+          <button class="px-2 bg-slate-200 rounded inc">+</button>
+          <button class="px-2 bg-red-500 text-white rounded rm">X</button>
+        </div>`;
+      div.querySelector('.inc').onclick = ()=>{ cart[idx].qty = Number(cart[idx].qty) + 1; refreshCartUI(); };
+      div.querySelector('.dec').onclick = ()=>{ cart[idx].qty = Math.max(0.01, Number(cart[idx].qty) - 1); refreshCartUI(); };
+      div.querySelector('.rm').onclick = ()=>{ cart.splice(idx,1); refreshCartUI(); };
+      quickCart.appendChild(div);
+    });
+    const total = cart.reduce((s,it)=> s + (it.qty * it.price), 0);
+    const foot = document.createElement('div'); foot.className='text-right font-semibold mt-2'; foot.textContent = 'Total ₹ ' + total.toFixed(2);
+    quickCart.appendChild(foot);
+  }
+
+  checkoutBtn.onclick = ()=>{
+    if(!cart.length) return alert('Cart empty');
+    const sale = { id: uid(), time: Date.now(), timeStr: new Date().toLocaleString(), items: cart.map(x=>({...x})) };
+    sales.push(sale);
+    saveLS(LS_SALES(currentUID), sales);
+    // deduct stock if qty present for each product
+    cart.forEach(it=>{
+      const prod = products.find(p=>p.id===it.id);
+      if(prod && prod.qty !== '' && !isNaN(prod.qty)){ prod.qty = Number(prod.qty) - Number(it.qty); if(prod.qty < 0) prod.qty = 0; }
+    });
+    saveLS(LS_PRODUCTS(currentUID), products);
+    cart = []; refreshCartUI(); refreshProductsUI(); refreshHistoryUI(); markDirty(true);
+    alert('Sale recorded locally');
+  };
+
+  function refreshHistoryUI() {
+  historyList.innerHTML = '';
+
+  if (!sales.length) {
+    historyList.innerHTML = '<div class="muted">No sales yet</div>';
+    return;
+  }
+
+  // Calculate grand total of all sales
+  const grandTotal = sales.reduce((sum, s) => {
+    const saleTotal = s.items.reduce((st, it) => st + it.qty * it.price, 0);
+    return sum + saleTotal;
+  }, 0);
+
+  // Grand total summary at top
+  const summaryDiv = document.createElement('div');
+  summaryDiv.className =
+    'p-2 mb-2 rounded bg-emerald-100 text-emerald-800 font-semibold flex justify-between';
+  summaryDiv.innerHTML = `<span>Grand Total Sales</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
+  historyList.appendChild(summaryDiv);
+
+  // Individual sale entries
+  sales
+    .slice()
+    .reverse()
+    .forEach((s, index) => {
+      const d = document.createElement('div');
+      d.className = 'border rounded p-2 bg-white';
+      const itemsHtml = s.items
+        .map(
+          (it) =>
+            `<div>${escapeHtml(it.name)} • ${it.qty}${it.unit} — ₹ ${(it.qty * it.price).toFixed(2)}</div>`
+        )
+        .join('');
+
+      const total = s.items.reduce((sum, it) => sum + it.qty * it.price, 0);
+      d.innerHTML = `
+        <div class="small muted">${new Date(s.time).toLocaleString()}</div>
+        ${itemsHtml}
+        <div class="mt-2 text-right font-semibold border-t pt-1">Total: ₹ ${total.toFixed(2)}</div>
+      `;
+      historyList.appendChild(d);
+    });
+}
+
+
+
+  clearHistoryBtn.onclick = ()=>{ if(confirm('Clear history?')){ sales=[]; saveLS(LS_SALES(currentUID), sales); refreshHistoryUI(); markDirty(true); } };
+
+  // ---------- SYNC (manual) ----------
+  // Strategy: push local → cloud by deleting cloud subcollections then writing local docs,
+  // then pull cloud → local and replace local arrays. This keeps cloud in sync with local copy.
+  syncBtn.onclick = async () => {
+  if (!navigator.onLine) return alert("No internet connection");
+  if (!currentUID) return alert("Not signed in");
+
+  const vendorRef = db.collection("vendors").doc(currentUID);
+  const prodCol = vendorRef.collection("products");
+  const salesCol = vendorRef.collection("sales");
+
+  const mode = confirm("OK = Push local data to cloud\nCancel = Pull cloud data to local");
+  //  true -> push, false -> pull
+
+  try {
+    syncStatusEl.textContent = "Syncing...";
+
+    if (mode) {
+      // PUSH / MERGE
+      for (const p of products) {
+        await prodCol.doc(p.id).set(p, { merge: true });
+      }
+      for (const s of sales) {
+        await salesCol.doc(s.id).set(s, { merge: true });
+      }
+      alert("Pushed local data to cloud.");
+    } else {
+      // PULL / DOWNLOAD
+      const cloudProds = (await prodCol.get()).docs.map((d) => d.data());
+      const cloudSales = (await salesCol.get()).docs.map((d) => d.data());
+      if (cloudProds.length === 0 && cloudSales.length === 0) {
+        alert("No data found in cloud for this vendor.");
+      } else {
+        products = cloudProds;
+        sales = cloudSales;
+        saveLS(LS_PRODUCTS(currentUID), products);
+        saveLS(LS_SALES(currentUID), sales);
+        refreshProductsUI();
+        refreshHistoryUI();
+        alert("Downloaded data from cloud.");
+      }
+    }
+
+    markDirty(false);
+    syncStatusEl.textContent = "Synced ✅";
+  } catch (err) {
+    console.error(err);
+    alert("Sync failed: " + err.message);
+    markDirty(true);
+  }
+};
+
+
+
+  // ---------- Utilities ----------
+  function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function setSyncStatus(){ setTimeout(()=>setSyncStatus(),0); } // small adapter (kept for compatibility)
+  function markDirty(v=true){ dirty = v; setSyncStatus(); syncStatusEl.textContent = (!navigator.onLine) ? 'Offline 🔴' : (dirty ? 'Pending 🟡' : 'Synced ✅'); }
+
+  // Update sync status on connectivity change
+  window.addEventListener('online', ()=> { setSyncStatus(); syncStatusEl.textContent = dirty ? 'Pending 🟡' : 'Synced ✅'; });
+  window.addEventListener('offline', ()=> { syncStatusEl.textContent = 'Offline 🔴'; });
+
+  // initial setSyncStatus
+  syncStatusEl.textContent = navigator.onLine ? 'Not signed in' : 'Offline 🔴';
+
+  // ---------- On load: local demo fallback only if no user (no global demo) ----------
+  // Note: actual data loads after login (namespaced by UID)
+
+})();
+</script>
+</body>
+</html>
