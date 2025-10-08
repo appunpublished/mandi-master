@@ -492,6 +492,10 @@
       const finalSales = Object.values(salesMap);
 
       // Save merged locally
+      // Normalize & save merged locally
+      for (const p of finalProducts) {
+        if (p.deleted === undefined) p.deleted = false;
+      }
       products = finalProducts.sort((a,b) => (a.name||'').localeCompare(b.name||''));
       sales = finalSales.sort((a,b)=> b.time - a.time);
       saveLS(LS_PRODUCTS(currentUID), products);
@@ -518,16 +522,17 @@
 
   syncStatusEl.textContent = navigator.onLine ? 'Manual sync' : 'Offline 🔴';
 
-  // ---------- initial UI refresh helpers ----------
-  function refreshProductsUI(){ /* implemented above, but call here to ensure up-to-date */ }
-  function refreshCartUI(){ /* implemented above, but call here to ensure up-to-date */ }
-  function refreshHistoryUI(){ /* implemented above, but call here to ensure up-to-date */ }
-  // functions already defined above; call to initialize
-  // (they are hoisted here so calls below work)
-  refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
-
   // ---------- small safety: upgrade older local items without lastUpdated ----------
   // run after login if needed (handled implicitly when merging)
+
+
+  // Force UI refresh after initial load
+  setTimeout(() => {
+    refreshProductsUI();
+    refreshCartUI();
+    refreshHistoryUI();
+  }, 500);
+
 
 })();
 </script>
