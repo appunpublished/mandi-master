@@ -349,25 +349,40 @@ const firebaseConfig = {
 
   function refreshHistoryUI() {
   historyList.innerHTML = '';
-  if (!sales.length)
-    return (historyList.innerHTML = '<div class="muted">No sales yet</div>');
 
+  if (!sales.length) {
+    historyList.innerHTML = '<div class="muted">No sales yet</div>';
+    return;
+  }
+
+  // Calculate grand total of all sales
+  const grandTotal = sales.reduce((sum, s) => {
+    const saleTotal = s.items.reduce((st, it) => st + it.qty * it.price, 0);
+    return sum + saleTotal;
+  }, 0);
+
+  // Grand total summary at top
+  const summaryDiv = document.createElement('div');
+  summaryDiv.className =
+    'p-2 mb-2 rounded bg-emerald-100 text-emerald-800 font-semibold flex justify-between';
+  summaryDiv.innerHTML = `<span>Grand Total Sales</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
+  historyList.appendChild(summaryDiv);
+
+  // Individual sale entries
   sales
     .slice()
     .reverse()
-    .forEach((s) => {
+    .forEach((s, index) => {
       const d = document.createElement('div');
-      d.className = 'border rounded p-2';
+      d.className = 'border rounded p-2 bg-white';
       const itemsHtml = s.items
         .map(
           (it) =>
             `<div>${escapeHtml(it.name)} • ${it.qty}${it.unit} — ₹ ${(it.qty * it.price).toFixed(2)}</div>`
         )
         .join('');
-      const total = s.items.reduce(
-        (sum, it) => sum + it.qty * it.price,
-        0
-      );
+
+      const total = s.items.reduce((sum, it) => sum + it.qty * it.price, 0);
       d.innerHTML = `
         <div class="small muted">${new Date(s.time).toLocaleString()}</div>
         ${itemsHtml}
@@ -378,63 +393,67 @@ const firebaseConfig = {
 }
 
 
+
   clearHistoryBtn.onclick = ()=>{ if(confirm('Clear history?')){ sales=[]; saveLS(LS_SALES(currentUID), sales); refreshHistoryUI(); markDirty(true); } };
 
   // ---------- SYNC (manual) ----------
   // Strategy: push local → cloud by deleting cloud subcollections then writing local docs,
   // then pull cloud → local and replace local arrays. This keeps cloud in sync with local copy.
-  syncBtn.onclick = async ()=>{
-    if(!navigator.onLine) return alert('No internet connection');
-    if(!currentUID) return alert('Not signed in');
-    setSyncStatus(); // update UI
-    try{
-      syncStatusEl.textContent = 'Syncing...';
-      // vendor doc root
-      const vendorRef = db.collection('vendors').doc(currentUID);
+  syncBtn.onclick = async () => {
+  if (!navigator.onLine) return alert('No internet connection');
+  if (!currentUID) return alert('Not signed in');
 
-      // ensure vendor profile has shopName & email
-      await vendorRef.set({ shopName: currentShop || regShop.value || '', email: currentUser.email }, { merge:true });
+  syncStatusEl.textContent = 'Syncing...';
+  const vendorRef = db.collection('vendors').doc(currentUID);
+  const prodCol = vendorRef.collection('products');
+  const salesCol = vendorRef.collection('sales');
 
-      // --- products: delete existing cloud docs then write local ---
-      const prodCol = vendorRef.collection('products');
+  try {
+    // --- If local has products/sales, push them ---
+    if (products.length > 0 || sales.length > 0) {
+      // Save vendor profile
+      await vendorRef.set({ shopName: currentShop || '', email: currentUser.email }, { merge: true });
+
+      // Overwrite cloud data only when local not empty
       const prodSnap = await prodCol.get();
-      const batchDeletes1 = [];
-      prodSnap.forEach(d => batchDeletes1.push(d.ref.delete()));
-      await Promise.all(batchDeletes1);
+      const delProds = [];
+      prodSnap.forEach(d => delProds.push(d.ref.delete()));
+      await Promise.all(delProds);
+      for (const p of products) await prodCol.doc(p.id).set(p);
 
-      for(const p of products){
-        await prodCol.doc(p.id).set(p);
-      }
+      const saleSnap = await salesCol.get();
+      const delSales = [];
+      saleSnap.forEach(d => delSales.push(d.ref.delete()));
+      await Promise.all(delSales);
+      for (const s of sales) await salesCol.doc(s.id).set(s);
 
-      // --- sales: delete existing cloud docs then write local ---
-      const salesCol = vendorRef.collection('sales');
-      const salesSnap = await salesCol.get();
-      const batchDeletes2 = [];
-      salesSnap.forEach(d => batchDeletes2.push(d.ref.delete()));
-      await Promise.all(batchDeletes2);
-
-      for(const s of sales){
-        await salesCol.doc(s.id).set(s);
-      }
-
-      // --- pull cloud back and replace local (confirm cloud is authoritative now) ---
-      const cloudProds = (await prodCol.get()).docs.map(d=>d.data());
-      const cloudSales = (await salesCol.get()).docs.map(d=>d.data());
-      products = cloudProds;
-      sales = cloudSales;
-      saveLS(LS_PRODUCTS(currentUID), products);
-      saveLS(LS_SALES(currentUID), sales);
-      markDirty(false);
-      refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
-      syncStatusEl.textContent = 'Synced ✅';
-      alert('Sync completed');
-    } catch(err){
-      console.error(err);
-      alert('Sync failed: ' + (err.message || err));
-      markDirty(true);
-      setSyncStatus();
+      console.log('Pushed local → cloud');
+    } else {
+      console.log('Local empty → skipping push');
     }
-  };
+
+    // --- Always pull cloud data after push ---
+    const cloudProds = (await prodCol.get()).docs.map(d => d.data());
+    const cloudSales = (await salesCol.get()).docs.map(d => d.data());
+
+    if (cloudProds.length > 0) products = cloudProds;
+    if (cloudSales.length > 0) sales = cloudSales;
+
+    saveLS(LS_PRODUCTS(currentUID), products);
+    saveLS(LS_SALES(currentUID), sales);
+
+    refreshProductsUI();
+    refreshHistoryUI();
+    markDirty(false);
+    syncStatusEl.textContent = 'Synced ✅';
+    alert('Sync complete!');
+  } catch (err) {
+    console.error(err);
+    alert('Sync failed: ' + err.message);
+    markDirty(true);
+  }
+};
+
 
   // ---------- Utilities ----------
   function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
