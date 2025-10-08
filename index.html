@@ -1,128 +1,710 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vendor MVP - Fruits & Vegetables</title>
-<style>
-  body {font-family:sans-serif;background:#f2f7f3;margin:0;}
-  header {background:#4CAF50;color:#fff;text-align:center;padding:10px;font-size:1.3em;}
-  .tab {display:flex;justify-content:space-around;background:#ddd;}
-  .tab button {flex:1;padding:12px;font-size:1em;border:none;background:#ddd;}
-  .tab button.active {background:#4CAF50;color:white;}
-  section {display:none;padding:15px;}
-  section.active {display:block;}
-  input,select,button {padding:10px;margin:5px 0;width:100%;font-size:1em;box-sizing:border-box;}
-  table {width:100%;border-collapse:collapse;margin-top:10px;}
-  th,td {border:1px solid #ccc;padding:8px;text-align:left;}
-  th {background:#eee;}
-  .actions button {width:48%;padding:8px;margin:2px 1%;font-size:0.9em;}
-  .audio-btn {background:#007bff;color:white;border:none;}
-  .cart-table td,.cart-table th{text-align:center;}
-  .danger{background:#f44336;color:#fff;border:none;padding:8px;border-radius:5px;}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Vendor POS — MVP</title>
+
+  <!-- Tailwind CDN (no build step) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* Small tweaks for very large touch targets */
+    .big-btn { padding: 18px 22px; border-radius: 14px; font-weight: 600; }
+    .icon-btn { width:56px; height:56px; border-radius:14px; display:inline-flex; align-items:center; justify-content:center; }
+    /* Make inputs big for ease */
+    input, select, button, textarea { font-size:1.05rem; }
+    /* simple tone for low literacy: colors + big icons */
+    .muted { opacity:0.9; }
+    /* fix for dropdown on mobile */
+    .no-zoom { -webkit-text-size-adjust:100%; }
+  </style>
 </head>
-<body>
+<body class="bg-slate-50 min-h-screen no-zoom">
 
-<header>🍎 Vendor App (Offline MVP)</header>
+  <div class="max-w-xl mx-auto p-4">
 
-<div class="tab">
-  <button id="productTab" class="active" onclick="openTab('products')">Products</button>
-  <button id="saleTab" onclick="openTab('sales')">Sales</button>
-  <button id="historyTab" onclick="openTab('history')">History</button>
-</div>
+    <!-- Header -->
+    <header class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <div class="bg-emerald-500 rounded-xl w-14 h-14 flex items-center justify-center shadow-lg">
+          <!-- simple basket icon -->
+          <svg class="w-8 h-8 text-white" viewBox="0 0 24 24" fill="none">
+            <path d="M3 7h18l-1.6 9.04A3 3 0 0 1 16.44 19H7.56a3 3 0 0 1-2.96-2.96L3 7z" stroke="white" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"></path>
+            <path d="M9 7V5a3 3 0 0 1 6 0v2" stroke="white" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="text-lg font-bold">Vendor POS</div>
+          <div class="text-xs text-slate-600">Simple — for one vendor</div>
+        </div>
+      </div>
 
-<!-- PRODUCTS TAB -->
-<section id="products" class="active">
-  <h2>Add / Manage Products</h2>
-  <input id="productName" placeholder="Product name">
-  <input id="productPrice" type="number" placeholder="Price (₹)">
-  <input id="productQty" type="number" placeholder="Quantity (optional)">
-  <select id="productUnit">
-    <option value="kg">Kg</option>
-    <option value="g">Gram</option>
-    <option value="piece">Piece</option>
-    <option value="dozen">Dozen</option>
-  </select>
-  <button onclick="addOrUpdateProduct()">Save Product</button>
-  <button class="audio-btn" onclick="startVoiceInput('productName')">🎤 Speak Product</button>
+      <div>
+        <button id="voiceModeBtn" class="icon-btn bg-amber-400 shadow-md" title="Voice help">
+          <svg id="voiceIcon" class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none"><path d="M12 1v11" stroke="white" stroke-width="1.4" stroke-linecap="round"/><path d="M19 10a7 7 0 0 1-14 0" stroke="white" stroke-width="1.4" stroke-linecap="round"/><path d="M5 21h14" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
 
-  <table>
-    <thead><tr><th>Product</th><th>Price</th><th>Qty</th><th>Unit</th><th>Actions</th></tr></thead>
-    <tbody id="productList"></tbody>
-  </table>
-</section>
+    <!-- Tabs -->
+    <nav class="flex gap-2 mb-4">
+      <button id="tabProducts" class="flex-1 big-btn bg-white text-slate-800 shadow-sm">Products</button>
+      <button id="tabSales" class="flex-1 big-btn bg-white text-slate-800 shadow-sm">Sale</button>
+      <button id="tabHistory" class="flex-1 big-btn bg-white text-slate-800 shadow-sm">History</button>
+    </nav>
 
-<!-- SALES TAB -->
-<section id="sales">
-  <h2>Record Sale</h2>
-  <select id="saleProduct"></select>
-  <input id="saleQty" type="number" placeholder="Quantity">
-  <button onclick="addToCart()">🛒 Add to Cart</button>
+    <!-- Content container -->
+    <main class="bg-white rounded-xl p-4 shadow-sm" id="app">
 
-  <h3>🧾 Cart</h3>
-  <table class="cart-table">
-    <thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th><th>❌</th></tr></thead>
-    <tbody id="cartList"></tbody>
-  </table>
-  <h3>Total: ₹<span id="cartTotal">0</span></h3>
-  <button onclick="checkout()">✅ Checkout</button>
-</section>
+      <!-- PRODUCTS VIEW -->
+      <section id="view-products">
+        <h2 class="text-xl font-semibold mb-3">Add / Edit Product</h2>
 
-<!-- HISTORY TAB -->
-<section id="history">
-  <h2>📜 Sales History</h2>
-  <table>
-    <thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Total ₹</th></tr></thead>
-    <tbody id="historyList"></tbody>
-  </table>
-  <button class="danger" onclick="clearHistory()">🧹 Clear All History</button>
-</section>
+        <form id="productForm" class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Name</label>
+            <div class="mt-1 flex gap-2">
+              <input id="p_name" class="flex-1 rounded-lg border p-3" placeholder="e.g., Tomato" />
+              <button type="button" class="icon-btn bg-blue-500 text-white" id="voiceName" title="Speak name">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M12 1v11" stroke="white" stroke-width="1.4" stroke-linecap="round"/><path d="M19 10a7 7 0 0 1-14 0" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </div>
 
-<script>
-  let products = JSON.parse(localStorage.getItem('products')) || [];
-  let sales = JSON.parse(localStorage.getItem('sales')) || [];
-  let cart = [];
-  let editIndex = null;
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Price (per unit)</label>
+            <div class="mt-1 flex gap-2">
+              <input id="p_price" type="number" min="0" step="0.01" class="flex-1 rounded-lg border p-3" placeholder="e.g., 40" />
+              <button type="button" class="icon-btn bg-blue-500 text-white" id="voicePrice" title="Speak price">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M12 1v11" stroke="white" stroke-width="1.4" stroke-linecap="round"/><path d="M19 10a7 7 0 0 1-14 0" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </div>
 
-  function saveData(){localStorage.setItem('products',JSON.stringify(products));localStorage.setItem('sales',JSON.stringify(sales));}
-  function openTab(tab){document.querySelectorAll('section').forEach(s=>s.classList.remove('active'));
-    document.querySelectorAll('.tab button').forEach(b=>b.classList.remove('active'));
-    document.getElementById(tab).classList.add('active');document.getElementById(tab+'Tab').classList.add('active');
-    if(tab==='sales')updateSalesDropdown();if(tab==='history')renderHistory();}
-  function addOrUpdateProduct(){
-    const n=document.getElementById('productName').value.trim();
-    const p=parseFloat(document.getElementById('productPrice').value);
-    const q=document.getElementById('productQty').value||'';
-    const u=document.getElementById('productUnit').value;
-    if(!n||isNaN(p))return alert('Enter product name and price');
-    if(editIndex!==null){products[editIndex]={name:n,price:p,qty:q,unit:u};editIndex=null;}
-    else{products.push({name:n,price:p,qty:q,unit:u});}
-    saveData();renderProducts();updateSalesDropdown();clearForm();}
-  function clearForm(){document.getElementById('productName').value='';document.getElementById('productPrice').value='';document.getElementById('productQty').value='';}
-  function renderProducts(){const tb=document.getElementById('productList');tb.innerHTML='';
-    products.forEach((p,i)=>{tb.innerHTML+=`<tr><td>${p.name}</td><td>₹${p.price}</td><td>${p.qty||'-'}</td><td>${p.unit}</td>
-      <td class='actions'><button onclick='editProduct(${i})'>✏️</button><button onclick='deleteProduct(${i})'>🗑</button></td></tr>`;});}
-  function editProduct(i){const p=products[i];document.getElementById('productName').value=p.name;
-    document.getElementById('productPrice').value=p.price;document.getElementById('productQty').value=p.qty;document.getElementById('productUnit').value=p.unit;editIndex=i;}
-  function deleteProduct(i){if(confirm('Delete this product?')){products.splice(i,1);saveData();renderProducts();updateSalesDropdown();}}
-  function updateSalesDropdown(){const sel=document.getElementById('saleProduct');sel.innerHTML='<option value="">Select Product</option>';
-    products.forEach(p=>{sel.innerHTML+=`<option value="${p.name}">${p.name} (₹${p.price}/${p.unit})</option>`;});}
-  function addToCart(){const n=document.getElementById('saleProduct').value;const q=parseFloat(document.getElementById('saleQty').value);
-    if(!n||isNaN(q))return alert('Select product and quantity');const pr=products.find(p=>p.name===n);
-    const t=q*pr.price;cart.push({name:n,qty:q,price:pr.price,total:t});renderCart();document.getElementById('saleQty').value='';}
-  function renderCart(){const tb=document.getElementById('cartList');tb.innerHTML='';let sum=0;
-    cart.forEach((c,i)=>{sum+=c.total;tb.innerHTML+=`<tr><td>${c.name}</td><td>${c.qty}</td><td>₹${c.price}</td><td>₹${c.total}</td><td><button onclick='removeCart(${i})'>❌</button></td></tr>`;});
-    document.getElementById('cartTotal').innerText=sum.toFixed(2);}
-  function removeCart(i){cart.splice(i,1);renderCart();}
-  function checkout(){if(cart.length===0)return alert('Cart empty');const d=new Date().toLocaleDateString();
-    cart.forEach(c=>sales.push({...c,date:d}));cart=[];saveData();renderCart();alert('✅ Sale recorded!');}
-  function renderHistory(){const tb=document.getElementById('historyList');tb.innerHTML='';
-    sales.forEach(s=>{tb.innerHTML+=`<tr><td>${s.date}</td><td>${s.name}</td><td>${s.qty}</td><td>₹${s.total}</td></tr>`;});}
-  function clearHistory(){if(confirm('Clear all history?')){sales=[];saveData();renderHistory();}}
-  function startVoiceInput(id){if(!('webkitSpeechRecognition'in window))return alert('Voice input not supported');
-    const r=new webkitSpeechRecognition();r.lang='en-IN';r.start();r.onresult=e=>{document.getElementById(id).value=e.results[0][0].transcript;};}
-  renderProducts();updateSalesDropdown();renderHistory();
-</script>
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Quantity (optional)</label>
+            <div class="mt-1 flex gap-2">
+              <input id="p_qty" type="number" min="0" step="0.01" class="rounded-lg border p-3 flex-1" placeholder="e.g., 10" />
+              <select id="p_unit" class="rounded-lg border p-3 w-40">
+                <option value="kg">kg</option>
+                <option value="g">g</option>
+                <option value="piece">piece</option>
+                <option value="dozen">dozen</option>
+              </select>
+              <button type="button" class="icon-btn bg-blue-500 text-white" id="voiceQty" title="Speak qty">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M12 1v11" stroke="white" stroke-width="1.4" stroke-linecap="round"/><path d="M19 10a7 7 0 0 1-14 0" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">Unit options: kg, g, piece, dozen</p>
+          </div>
+
+          <div class="flex gap-2">
+            <button id="saveProduct" class="flex-1 big-btn bg-emerald-500 text-white">Save Product</button>
+            <button id="clearForm" type="button" class="flex-1 big-btn bg-slate-200 text-slate-800">Clear</button>
+          </div>
+        </form>
+
+        <hr class="my-4" />
+
+        <h3 class="text-lg font-semibold mb-2">Products</h3>
+        <div id="productsList" class="space-y-3">
+          <!-- product items filled by JS -->
+        </div>
+
+      </section>
+
+      <!-- SALES VIEW -->
+      <section id="view-sales" class="hidden">
+        <h2 class="text-xl font-semibold mb-3">Record a Sale</h2>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Choose product</label>
+            <select id="sale_product" class="rounded-lg border p-3 w-full">
+              <!-- filled by JS -->
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Quantity</label>
+            <div class="mt-1 flex gap-2">
+              <input id="sale_qty" type="number" min="0.01" step="0.01" class="flex-1 rounded-lg border p-3" placeholder="e.g., 1 or 250 (if g)" />
+              <div id="sale_unit_box" class="rounded-lg border p-3 w-28 text-center">kg</div>
+              <button id="voiceSaleQty" class="icon-btn bg-blue-500 text-white" title="Speak sale qty">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M12 1v11" stroke="white" stroke-width="1.4" stroke-linecap="round"/><path d="M19 10a7 7 0 0 1-14 0" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex gap-2">
+            <button id="addToCart" class="flex-1 big-btn bg-amber-500 text-white">Add to Cart</button>
+            <button id="openCart" class="flex-1 big-btn bg-slate-200 text-slate-800">Open Cart</button>
+          </div>
+
+          <hr />
+
+          <h3 class="text-lg font-semibold">Quick cart</h3>
+          <div id="quickCart" class="space-y-2 mt-2">
+            <!-- cart items -->
+            <div class="text-sm text-slate-500">Cart empty</div>
+          </div>
+
+          <div class="mt-4">
+            <button id="checkoutBtn" class="w-full big-btn bg-emerald-600 text-white">Checkout</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- HISTORY VIEW -->
+      <section id="view-history" class="hidden">
+        <h2 class="text-xl font-semibold mb-3">Sales History</h2>
+        <div id="historyList" class="space-y-3">
+          <!-- history items -->
+        </div>
+
+        <div class="mt-4">
+          <button id="clearAllHistory" class="big-btn bg-red-500 text-white w-full">Clear History</button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom help bar -->
+    <footer class="mt-4 text-center text-xs text-slate-500">
+      Tip: use the microphone buttons to speak. Speak in short words like "tomato", "10", "40 rupees".
+    </footer>
+  </div>
+
+  <script>
+  // ---------------------------
+  // Simple Vendor POS MVP (single-file)
+  // - Stores products & sales in localStorage
+  // - SpeechRecognition voice input + speechSynthesis confirmations
+  // - Mobile-first, simple UI
+  // ---------------------------
+
+  (function () {
+    // ---------------------------
+    // Utilities
+    // ---------------------------
+    function $(id) { return document.getElementById(id); }
+    function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      const u = new SpeechSynthesisUtterance(String(text));
+      u.lang = 'en-IN';
+      u.rate = 0.95;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    }
+
+    // ---------------------------
+    // LocalStorage keys
+    // ---------------------------
+    const KEY_PRODUCTS = 'fv_products_v1';
+    const KEY_SALES = 'fv_sales_v1';
+
+    function saveProducts(arr) { localStorage.setItem(KEY_PRODUCTS, JSON.stringify(arr)); }
+    function loadProducts() {
+      try {
+        return JSON.parse(localStorage.getItem(KEY_PRODUCTS) || '[]') || [];
+      } catch (e) { return []; }
+    }
+    function saveSales(arr) { localStorage.setItem(KEY_SALES, JSON.stringify(arr)); }
+    function loadSales() {
+      try {
+        return JSON.parse(localStorage.getItem(KEY_SALES) || '[]') || [];
+      } catch (e) { return []; }
+    }
+
+    // ---------------------------
+    // App state
+    // ---------------------------
+    let products = loadProducts();
+    let sales = loadSales();
+    let editProductId = null;
+    let cart = [];
+    let voiceMode = true; // whether to auto speak confirmations
+
+    // ---------------------------
+    // DOM refs
+    // ---------------------------
+    const pForm = $('productForm');
+    const pName = $('p_name');
+    const pPrice = $('p_price');
+    const pQty = $('p_qty');
+    const pUnit = $('p_unit');
+    const productsList = $('productsList');
+    const saveProductBtn = $('saveProduct');
+    const clearFormBtn = $('clearForm');
+
+    const saleProduct = $('sale_product');
+    const saleQty = $('sale_qty');
+    const saleUnitBox = $('sale_unit_box');
+    const addToCartBtn = $('addToCart');
+    const quickCart = $('quickCart');
+    const openCartBtn = $('openCart');
+    const checkoutBtn = $('checkoutBtn');
+
+    const historyList = $('historyList');
+    const clearAllHistoryBtn = $('clearAllHistory');
+
+    const tabProducts = $('tabProducts');
+    const tabSales = $('tabSales');
+    const tabHistory = $('tabHistory');
+
+    const viewProducts = $('view-products');
+    const viewSales = $('view-sales');
+    const viewHistory = $('view-history');
+
+    const voiceNameBtn = $('voiceName');
+    const voicePriceBtn = $('voicePrice');
+    const voiceQtyBtn = $('voiceQty');
+    const voiceSaleQtyBtn = $('voiceSaleQty');
+    const voiceModeBtn = $('voiceModeBtn');
+    const voiceIcon = $('voiceIcon');
+
+    // ---------------------------
+    // Speech Recognition wrapper
+    // ---------------------------
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    function startListening(onResult, opts = {}) {
+      if (!SpeechRecognition) {
+        alert('Speech Recognition not supported on this browser. Try Chrome on Android.');
+        return;
+      }
+      const rec = new SpeechRecognition();
+      rec.lang = opts.lang || 'en-IN';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      rec.onresult = function (e) {
+        const text = e.results[0][0].transcript.trim();
+        onResult(text);
+      };
+      rec.onerror = function (e) {
+        // optionally handle
+        console.log('speech error', e);
+        if (opts.onError) opts.onError(e);
+      };
+      rec.onend = function () {
+        // nothing
+      };
+      rec.start();
+      // small vibrate if available (device feedback)
+      if (navigator.vibrate) navigator.vibrate(60);
+    }
+
+    // ---------------------------
+    // UI rendering
+    // ---------------------------
+    function refreshProductsUI() {
+      // list
+      productsList.innerHTML = '';
+      if (products.length === 0) {
+        productsList.innerHTML = '<div class="text-sm text-slate-500">No products yet</div>';
+      } else {
+        products.forEach(p => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'flex items-center justify-between gap-3 p-3 border rounded-lg';
+          wrapper.innerHTML = `
+            <div>
+              <div class="font-semibold text-lg">${escapeHtml(p.name)}</div>
+              <div class="text-sm text-slate-500">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty !== null && p.qty !== '' ? ' • ' + p.qty + ' ' + p.unit : ''}</div>
+            </div>
+            <div class="flex gap-2 items-center">
+              <button class="editBtn big-btn bg-sky-500 text-white">Edit</button>
+              <button class="delBtn big-btn bg-red-500 text-white">Del</button>
+            </div>
+          `;
+          // attach events
+          wrapper.querySelector('.editBtn').addEventListener('click', () => {
+            editProductId = p.id;
+            pName.value = p.name;
+            pPrice.value = p.price;
+            pQty.value = p.qty === null ? '' : p.qty;
+            pUnit.value = p.unit;
+            scrollToTop();
+            if (voiceMode) speak('Editing ' + p.name);
+          });
+          wrapper.querySelector('.delBtn').addEventListener('click', () => {
+            if (!confirm('Delete product "' + p.name + '" ?')) return;
+            products = products.filter(x => x.id !== p.id);
+            saveProducts(products);
+            refreshProductsUI();
+            refreshSaleProducts();
+            if (voiceMode) speak('Deleted ' + p.name);
+          });
+          productsList.appendChild(wrapper);
+        });
+      }
+      refreshSaleProducts();
+    }
+
+    function refreshSaleProducts() {
+      // populate sale product select
+      saleProduct.innerHTML = '';
+      if (products.length === 0) {
+        saleProduct.innerHTML = '<option value="">No products</option>';
+      } else {
+        saleProduct.innerHTML = products.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ₹${Number(p.price).toFixed(2)}/${p.unit}</option>`).join('');
+      }
+      // set default unit display
+      const sel = products.find(x => x.id === saleProduct.value) || products[0];
+      saleUnitBox.textContent = sel ? sel.unit : '—';
+    }
+
+    function refreshCartUI() {
+      quickCart.innerHTML = '';
+      if (cart.length === 0) {
+        quickCart.innerHTML = '<div class="text-sm text-slate-500">Cart empty</div>';
+        return;
+      }
+      cart.forEach((it, idx) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between gap-2 p-2 border rounded-lg';
+        row.innerHTML = `
+          <div>
+            <div class="font-medium">${escapeHtml(it.name)}</div>
+            <div class="text-sm text-slate-500">${it.qty} ${it.unit} • ₹ ${Number(it.price).toFixed(2)} each</div>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <div class="font-semibold">₹ ${(it.qty * it.price).toFixed(2)}</div>
+            <div class="flex gap-1">
+              <button class="minusBtn big-btn bg-slate-200 text-slate-800">-</button>
+              <button class="plusBtn big-btn bg-slate-200 text-slate-800">+</button>
+              <button class="rmBtn big-btn bg-red-500 text-white">X</button>
+            </div>
+          </div>
+        `;
+        // events
+        row.querySelector('.plusBtn').addEventListener('click', () => {
+          cart[idx].qty = Number(cart[idx].qty) + 1;
+          refreshCartUI();
+        });
+        row.querySelector('.minusBtn').addEventListener('click', () => {
+          cart[idx].qty = Math.max(0.01, Number(cart[idx].qty) - 1);
+          refreshCartUI();
+        });
+        row.querySelector('.rmBtn').addEventListener('click', () => {
+          cart.splice(idx,1);
+          refreshCartUI();
+        });
+        quickCart.appendChild(row);
+      });
+
+      // summary row
+      const total = cart.reduce((s, it) => s + (Number(it.qty) * Number(it.price)), 0);
+      const summary = document.createElement('div');
+      summary.className = 'mt-2 p-3 border rounded-lg bg-slate-50';
+      summary.innerHTML = `<div class="flex justify-between font-semibold">Total <div>₹ ${total.toFixed(2)}</div></div>`;
+      quickCart.appendChild(summary);
+    }
+
+    function refreshHistoryUI() {
+      historyList.innerHTML = '';
+      if (sales.length === 0) {
+        historyList.innerHTML = '<div class="text-sm text-slate-500">No sales yet</div>';
+        return;
+      }
+      sales.slice().reverse().forEach(s => {
+        const el = document.createElement('div');
+        el.className = 'p-3 border rounded-lg';
+        const time = new Date(s.time).toLocaleString();
+        el.innerHTML = `<div class="text-sm text-slate-500">${time}</div>`;
+        s.items.forEach(it => {
+          const row = document.createElement('div');
+          row.className = 'flex justify-between mt-2';
+          row.innerHTML = `<div>${escapeHtml(it.name)} • ${it.qty} ${it.unit}</div><div>₹ ${(it.qty*it.price).toFixed(2)}</div>`;
+          el.appendChild(row);
+        });
+        const tot = s.items.reduce((a,b) => a + (b.qty*b.price), 0);
+        const foot = document.createElement('div');
+        foot.className = 'mt-3 flex justify-between font-semibold';
+        foot.innerHTML = `<div>Paid</div><div>₹ ${tot.toFixed(2)}</div>`;
+        el.appendChild(foot);
+
+        historyList.appendChild(el);
+      });
+    }
+
+    // ---------------------------
+    // Helpers
+    // ---------------------------
+    function escapeHtml(t) {
+      return String(t)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;');
+    }
+    function scrollToTop() { window.scrollTo({top:0,behavior:'smooth'}); }
+
+    // ---------------------------
+    // Actions
+    // ---------------------------
+    function saveProductFromForm() {
+      const name = (pName.value || '').trim();
+      const price = Number(pPrice.value || 0);
+      const qty = pQty.value === '' ? '' : Number(pQty.value);
+      const unit = pUnit.value;
+      if (!name) {
+        alert('Please enter product name');
+        return;
+      }
+      if (!price || price <= 0) {
+        if (!confirm('Price seems zero. Save anyway?')) return;
+      }
+      if (editProductId) {
+        // update
+        const idx = products.findIndex(x => x.id === editProductId);
+        if (idx !== -1) {
+          products[idx].name = name;
+          products[idx].price = price;
+          products[idx].qty = qty === '' ? '' : qty;
+          products[idx].unit = unit;
+          saveProducts(products);
+          editProductId = null;
+          if (voiceMode) speak('Product saved');
+        }
+      } else {
+        const p = { id: uid(), name, price, qty: qty === '' ? '' : qty, unit };
+        products.push(p);
+        saveProducts(products);
+        if (voiceMode) speak('Product added ' + name);
+      }
+      // clear
+      pForm.reset();
+      refreshProductsUI();
+    }
+
+    function addToCart() {
+      if (products.length === 0) { alert('No products to sell'); return; }
+      const pid = saleProduct.value;
+      const p = products.find(x => x.id === pid);
+      if (!p) { alert('Select product'); return; }
+      const q = Number(saleQty.value);
+      if (!q || q <= 0) { alert('Enter qty'); return; }
+      // add
+      const existing = cart.find(x => x.id === p.id && x.unit === p.unit);
+      if (existing) existing.qty = Number(existing.qty) + q;
+      else cart.push({ id: p.id, name: p.name, price: Number(p.price), qty: q, unit: p.unit });
+      saleQty.value = '';
+      refreshCartUI();
+      if (voiceMode) speak('Added ' + q + ' ' + p.unit + ' of ' + p.name + ' to cart');
+    }
+
+    function doCheckout() {
+      if (cart.length === 0) { alert('Cart is empty'); return; }
+      const total = cart.reduce((s, it) => s + (it.qty * it.price), 0);
+      if (!confirm('Total ₹ ' + total.toFixed(2) + '. Complete sale?')) return;
+      // reduce stock where qty provided
+      cart.forEach(it => {
+        const prod = products.find(x => x.id === it.id);
+        if (prod && prod.qty !== '' && prod.qty !== null && !isNaN(prod.qty)) {
+          // note: units may differ (g vs kg) — MVP keeps units consistent since product unit used
+          prod.qty = Number(prod.qty) - Number(it.qty);
+          if (prod.qty < 0) prod.qty = 0;
+        }
+      });
+      // record sale
+      const s = { id: uid(), time: Date.now(), items: cart.map(x => ({ ...x })) };
+      sales.push(s);
+      saveSales(sales);
+      saveProducts(products);
+      // speak & clear
+      if (voiceMode) speak('Sale recorded. Total rupees ' + total.toFixed(0));
+      cart = [];
+      refreshCartUI();
+      refreshProductsUI();
+      refreshHistoryUI();
+      alert('Sale saved. ₹ ' + total.toFixed(2));
+    }
+
+    function clearHistory() {
+      if (!confirm('Clear all sales history?')) return;
+      sales = [];
+      saveSales(sales);
+      refreshHistoryUI();
+      if (voiceMode) speak('History cleared');
+    }
+
+    // ---------------------------
+    // Events
+    // ---------------------------
+
+    // Form save
+    saveProductBtn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      saveProductFromForm();
+    });
+
+    clearFormBtn.addEventListener('click', function () {
+      editProductId = null;
+      pForm.reset();
+    });
+
+    // sale events
+    addToCartBtn.addEventListener('click', addToCart);
+    openCartBtn.addEventListener('click', () => {
+      // jump to quick cart area
+      quickCart.scrollIntoView({behavior:'smooth'});
+      if (voiceMode) speak('Cart has ' + cart.length + ' items');
+    });
+    checkoutBtn.addEventListener('click', doCheckout);
+
+    clearAllHistoryBtn.addEventListener('click', clearHistory);
+
+    // tabs
+    function showTab(tab) {
+      viewProducts.classList.add('hidden');
+      viewSales.classList.add('hidden');
+      viewHistory.classList.add('hidden');
+      tabProducts.classList.remove('bg-emerald-200');
+      tabSales.classList.remove('bg-emerald-200');
+      tabHistory.classList.remove('bg-emerald-200');
+
+      if (tab === 'products') {
+        viewProducts.classList.remove('hidden');
+        tabProducts.classList.add('bg-emerald-200');
+      } else if (tab === 'sales') {
+        viewSales.classList.remove('hidden');
+        tabSales.classList.add('bg-emerald-200');
+      } else if (tab === 'history') {
+        viewHistory.classList.remove('hidden');
+        tabHistory.classList.add('bg-emerald-200');
+      }
+    }
+    tabProducts.addEventListener('click', () => showTab('products'));
+    tabSales.addEventListener('click', () => showTab('sales'));
+    tabHistory.addEventListener('click', () => showTab('history'));
+
+    // default tab
+    showTab('products');
+
+    // sale product change -> update unit display
+    saleProduct.addEventListener('change', () => {
+      const p = products.find(x => x.id === saleProduct.value);
+      saleUnitBox.textContent = p ? p.unit : '—';
+    });
+
+    // voice buttons
+    voiceNameBtn.addEventListener('click', () => {
+      startListening(function (txt) {
+        pName.value = txt;
+        if (voiceMode) speak('Name ' + txt);
+      }, { onError: ()=> alert('Voice not available') });
+    });
+    voicePriceBtn.addEventListener('click', () => {
+      startListening(function (txt) {
+        // try to extract numbers from text
+        const n = findNumberInString(txt);
+        if (n !== null) {
+          pPrice.value = n;
+          if (voiceMode) speak('Price ' + n + ' rupees');
+        } else {
+          pPrice.value = '';
+          alert('Could not find number. Try speaking "40" or "forty"');
+        }
+      });
+    });
+    voiceQtyBtn.addEventListener('click', () => {
+      startListening(function (txt) {
+        const n = findNumberInString(txt);
+        if (n !== null) {
+          pQty.value = n;
+          if (voiceMode) speak('Quantity ' + n);
+        } else {
+          pQty.value = '';
+          alert('Could not find number');
+        }
+      });
+    });
+    voiceSaleQtyBtn.addEventListener('click', () => {
+      startListening(function (txt) {
+        const n = findNumberInString(txt);
+        if (n !== null) {
+          saleQty.value = n;
+          if (voiceMode) speak('Sale qty ' + n);
+        } else {
+          saleQty.value = '';
+          alert('Could not find number');
+        }
+      });
+    });
+
+    // toggle voice mode
+    voiceModeBtn.addEventListener('click', () => {
+      voiceMode = !voiceMode;
+      voiceModeBtn.classList.toggle('bg-amber-400', voiceMode);
+      if (voiceMode) { voiceModeBtn.classList.add('bg-amber-400'); speak('Voice on'); } else { speak('Voice off'); }
+    });
+
+    // quick helper: find numbers inside spoken text
+    function findNumberInString(s) {
+      if (!s) return null;
+      // try direct digit
+      const m = s.match(/[\d]+(\.\d+)?/);
+      if (m) return Number(m[0]);
+      // fallback: simple words to numbers small mapping (one..ten..hundred)
+      const w = s.toLowerCase().replace(/[^a-z0-9\s]/g,'').trim();
+      const map = {
+        zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10,
+        eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19, twenty:20,
+        thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90, hundred:100, thousand:1000
+      };
+      let total = 0;
+      let parts = w.split(/\s+/);
+      let numberFound = false;
+      for (let p of parts) {
+        if (map[p] !== undefined) {
+          numberFound = true;
+          // simplistic aggregation
+          if (map[p] >= 100) total = (total || 1) * map[p];
+          else total += map[p];
+        }
+      }
+      return numberFound ? total || null : null;
+    }
+
+    // small safety: when page unload, save data
+    window.addEventListener('beforeunload', () => {
+      saveProducts(products);
+      saveSales(sales);
+    });
+
+    // ---------------------------
+    // Init load
+    // ---------------------------
+    function initDefaultDemoData() {
+      if (products.length === 0) {
+        // add a few sample products to make testing easy (you can remove)
+        products.push({ id: uid(), name: 'Tomato', price: 40, qty: 10, unit: 'kg' });
+        products.push({ id: uid(), name: 'Potato', price: 30, qty: 20, unit: 'kg' });
+        products.push({ id: uid(), name: 'Green Chilli', price: 120, qty: '', unit: 'kg' });
+        saveProducts(products);
+      }
+    }
+    initDefaultDemoData();
+    refreshProductsUI();
+    refreshCartUI();
+    refreshHistoryUI();
+
+    // quick actions for demo
+    // attach Enter key behavior for forms
+    pForm.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveProductFromForm();
+      }
+    });
+
+    // small helper for first-run instructions via voice
+    if (voiceMode) {
+      setTimeout(() => speak('Welcome. Add a product or go to sales to record sale.'), 700);
+    }
+
+  })();
+
+  </script>
 </body>
 </html>
