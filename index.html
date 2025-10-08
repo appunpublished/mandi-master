@@ -3,20 +3,18 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Vendor POS — Merge Sync (Firebase)</title>
+  <title>Vendor POS — Final (Push / Pull + Delete + Date Filter)</title>
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Firebase compat libs (single-file apps) -->
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
-
   <style>
     body { background:#f8fafc; font-family:Inter, system-ui, sans-serif; }
     .big-btn{ padding:10px 14px; border-radius:10px; font-weight:600; }
     .muted { color:#6b7280; }
     .small { font-size:.85rem; }
-    .log { font-family: monospace; font-size: .9rem; white-space: pre-wrap; }
+    .chip { padding:6px 10px; border-radius:999px; background:#eef2ff; cursor:pointer; }
   </style>
 </head>
 <body class="min-h-screen flex items-start justify-center p-4">
@@ -42,8 +40,9 @@
         <div id="vendorInfo" class="small muted">email • uid</div>
       </div>
       <div class="flex items-center gap-2">
-        <div id="syncStatus" class="px-3 py-1 rounded small">Offline 🔴</div>
-        <button id="syncBtn" class="big-btn bg-amber-400 text-white small">Sync</button>
+        <div id="syncStatus" class="px-3 py-1 rounded small muted">Manual sync</div>
+        <button id="pushBtn" class="big-btn bg-emerald-500 text-white small">⬆️ Push</button>
+        <button id="pullBtn" class="big-btn bg-sky-500 text-white small">⬇️ Pull</button>
         <button id="logoutBtn" class="big-btn bg-red-500 text-white small">Logout</button>
       </div>
     </header>
@@ -100,26 +99,30 @@
 
       <!-- HISTORY -->
       <section id="view-history" class="hidden">
-        <h3 class="font-semibold mb-2">Sales History</h3>
-        <div id="historyList" class="space-y-2 max-h-72 overflow-auto"></div>
-        <div class="mt-3">
-          <button id="clearHistoryBtn" class="big-btn bg-red-500 text-white w-full">Clear History</button>
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold mb-2">Sales History</h3>
+          <div class="flex gap-2 items-center">
+            <div class="small muted mr-2">Filter</div>
+            <select id="historyFilter" class="border rounded p-2 small">
+              <option value="all">All</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+            </select>
+          </div>
         </div>
+
+        <div id="historyList" class="space-y-2 max-h-72 overflow-auto"></div>
       </section>
 
-      <hr class="my-3" />
-      <div>
-        <h4 class="font-semibold mb-2">Sync log</h4>
-        <div id="syncLog" class="log bg-slate-50 p-2 rounded min-h-[40px]"></div>
-      </div>
     </main>
   </div>
 
 <script>
 (async function(){
   // ---------- FIREBASE CONFIG ----------
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+  const firebaseConfig = {
   apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
   authDomain: "vendor-pos.firebaseapp.com",
   projectId: "vendor-pos",
@@ -145,31 +148,32 @@ const firebaseConfig = {
   let currentUser = null;
   let currentUID = null;
   let currentShop = null;
-  let products = [];
-  let sales = [];
+  let products = []; // array of {id,name,price,qty,unit,lastUpdated,deleted?}
+  let sales = [];    // array of {id,time,timeStr,items:[{id,name,price,qty,unit}], lastUpdated}
   let cart = [];
   let dirty = false;
 
   // DOM refs
   const authWrap = $('authWrap'), appWrap = $('appWrap');
-  const shopNameEl = $('shopName'), vendorInfoEl = $('vendorInfo'), syncStatusEl = $('syncStatus'), syncBtn = $('syncBtn'), logoutBtn = $('logoutBtn');
+  const shopNameEl = $('shopName'), vendorInfoEl = $('vendorInfo'), syncStatusEl = $('syncStatus');
+  const pushBtn = $('pushBtn'), pullBtn = $('pullBtn'), logoutBtn = $('logoutBtn');
   const tabProducts = $('tabProducts'), tabSales = $('tabSales'), tabHistory = $('tabHistory');
   const viewProducts = $('view-products'), viewSales = $('view-sales'), viewHistory = $('view-history');
+
   const p_name = $('p_name'), p_price = $('p_price'), p_qty = $('p_qty'), p_unit = $('p_unit');
   const saveProductBtn = $('saveProduct'), clearProductBtn = $('clearProduct'), productList = $('productList');
+
   const saleSearch = $('saleSearch'), sale_product = $('sale_product'), sale_qty = $('sale_qty'), sale_unit_box = $('sale_unit_box');
   const addToCartBtn = $('addToCart'), openCartBtn = $('openCart'), quickCart = $('quickCart'), checkoutBtn = $('checkoutBtn');
-  const historyList = $('historyList'), clearHistoryBtn = $('clearHistoryBtn'), syncLog = $('syncLog');
+
+  const historyList = $('historyList'), historyFilter = $('historyFilter');
+
   const registerBtn = $('registerBtn'), loginBtn = $('loginBtn'), regShop = $('regShop'), emailInp = $('email'), passInp = $('password');
 
-  // Utilities
-  function now(){ return Date.now(); }
-  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  // UTIL
+  const now = () => Date.now();
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function setSyncStatusText(text){ syncStatusEl.textContent = text; }
-  function logSync(msg){ const time=(new Date()).toLocaleTimeString(); syncLog.textContent = (time + ' — ' + msg + '\n') + syncLog.textContent; }
-
-  // Dirty flag
   function markDirty(v=true){ dirty = v; syncStatusEl.textContent = (!navigator.onLine) ? 'Offline 🔴' : (dirty ? 'Pending 🟡' : 'Synced ✅'); }
 
   // ---------- AUTH ----------
@@ -179,7 +183,6 @@ const firebaseConfig = {
     try{
       const cred = await auth.createUserWithEmailAndPassword(email, pass);
       const user = cred.user;
-      // create vendor profile
       await db.collection('vendors').doc(user.uid).set({
         shopName: shop,
         email: email,
@@ -210,16 +213,15 @@ const firebaseConfig = {
       appWrap.classList.remove('hidden'); authWrap.classList.add('hidden');
       shopNameEl.textContent = currentShop;
       vendorInfoEl.textContent = `${currentUser.email} • UID: ${currentUID}`;
-      setSyncStatusText(navigator.onLine ? (dirty ? 'Pending 🟡' : 'Synced ✅') : 'Offline 🔴');
+      markDirty(true); // assume local changes until user Push/Pull
       refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
-      logSync('Logged in — local data loaded');
     } else {
       currentUser = null; currentUID = null; currentShop = null;
       authWrap.classList.remove('hidden'); appWrap.classList.add('hidden');
     }
   });
 
-  // ---------- UI Tabs ----------
+  // ---------- TABS ----------
   function show(tab){
     viewProducts.classList.add('hidden'); viewSales.classList.add('hidden'); viewHistory.classList.add('hidden');
     tabProducts.classList.remove('bg-emerald-200'); tabSales.classList.remove('bg-emerald-200'); tabHistory.classList.remove('bg-emerald-200');
@@ -230,14 +232,14 @@ const firebaseConfig = {
   tabProducts.onclick=()=>show('products'); tabSales.onclick=()=>show('sales'); tabHistory.onclick=()=>show('history');
   show('products');
 
-  // ---------- PRODUCTS CRUD (local only until sync) ----------
+  // ---------- PRODUCTS CRUD (local) ----------
   let editProductId = null;
   saveProductBtn.onclick = () => {
     const name = p_name.value.trim(); if(!name) return alert('Name required');
     const price = Number(p_price.value) || 0; const qty = p_qty.value === '' ? '' : Number(p_qty.value); const unit = p_unit.value;
     if(editProductId){
       const i = products.findIndex(x => x.id === editProductId);
-      if(i>=0) products[i] = { ...products[i], name, price, qty, unit, lastUpdated: now() };
+      if(i>=0) products[i] = { ...products[i], name, price, qty, unit, lastUpdated: now(), deleted: false };
       editProductId = null;
     } else {
       products.push({ id: uid(), name, price, qty, unit, lastUpdated: now() });
@@ -252,8 +254,9 @@ const firebaseConfig = {
 
   function refreshProductsUI(){
     productList.innerHTML = '';
-    if(!products.length){ productList.innerHTML = '<div class="muted">No products</div>'; refreshSaleProducts(); return; }
-    products.forEach(p=>{
+    const active = products.filter(p => !p.deleted).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    if(!active.length){ productList.innerHTML = '<div class="muted">No products</div>'; refreshSaleProducts(); return; }
+    active.forEach(p=>{
       const row = document.createElement('div');
       row.className = 'flex justify-between items-center border rounded p-2';
       row.innerHTML = `<div><div class="font-semibold">${escapeHtml(p.name)}</div><div class="small muted">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty!=='' ? ' • ' + p.qty + ' ' + p.unit : ''}</div></div>
@@ -262,7 +265,12 @@ const firebaseConfig = {
           <button class="bg-red-500 text-white px-2 rounded del">Del</button>
         </div>`;
       row.querySelector('.edit').onclick = ()=>{ editProductId = p.id; p_name.value = p.name; p_price.value = p.price; p_qty.value = p.qty; p_unit.value = p.unit; window.scrollTo({top:0,behavior:'smooth'}); };
-      row.querySelector('.del').onclick = ()=>{ if(confirm('Delete product?')){ products = products.filter(x=>x.id!==p.id); saveLS(LS_PRODUCTS(currentUID), products); markDirty(true); refreshProductsUI(); } };
+      row.querySelector('.del').onclick = ()=>{ 
+        if(!confirm('Delete this product?')) return;
+        // mark deleted locally (soft-delete)
+        const idx = products.findIndex(x=>x.id===p.id);
+        if(idx>=0){ products[idx].deleted = true; products[idx].lastUpdated = now(); saveLS(LS_PRODUCTS(currentUID), products); markDirty(true); refreshProductsUI(); }
+      };
       productList.appendChild(row);
     });
     refreshSaleProducts();
@@ -272,14 +280,14 @@ const firebaseConfig = {
   saleSearch.oninput = ()=> refreshSaleProducts(saleSearch.value);
   function refreshSaleProducts(filterTerm=''){
     const term = (filterTerm||'').trim().toLowerCase();
-    let list = products.slice();
+    let list = products.filter(p => !p.deleted).slice();
     if(term){
       const starts = list.filter(p => p.name.toLowerCase().startsWith(term));
       const includes = list.filter(p => !p.name.toLowerCase().startsWith(term) && p.name.toLowerCase().includes(term));
       list = starts.concat(includes);
     }
     sale_product.innerHTML = list.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ₹${Number(p.price).toFixed(2)}/${p.unit}</option>`).join('') || '<option value="">No match</option>';
-    const sel = products.find(x => x.id === sale_product.value) || products[0];
+    const sel = products.find(x => x.id === sale_product.value) || list[0];
     sale_unit_box.textContent = sel ? sel.unit : '—';
   }
 
@@ -330,16 +338,34 @@ const firebaseConfig = {
 
   function refreshHistoryUI(){
     historyList.innerHTML = '';
-    if(!sales.length) { historyList.innerHTML = '<div class="muted">No sales yet</div>'; return; }
 
-    // Grand total
-    const grandTotal = sales.reduce((sum, s) => sum + s.items.reduce((st, it) => st + it.qty * it.price, 0), 0);
+    // filter by date
+    const filter = historyFilter.value || 'all';
+    const isSameDay = (d1, d2) => new Date(d1).toDateString() === new Date(d2).toDateString();
+    const startOfWeek = (d) => { const dt = new Date(d); const day = dt.getDay(); dt.setDate(dt.getDate() - day); dt.setHours(0,0,0,0); return dt; };
+    const startOfMonth = (d) => { const dt = new Date(d); dt.setDate(1); dt.setHours(0,0,0,0); return dt; };
+
+    const filteredSales = sales.filter(s => {
+      if(!s.time) return false;
+      const t = new Date(s.time);
+      const today = new Date();
+      if(filter === 'today') return isSameDay(t, today);
+      if(filter === 'yesterday'){ const y = new Date(); y.setDate(y.getDate() -1); return isSameDay(t, y); }
+      if(filter === 'week'){ return t >= startOfWeek(today); }
+      if(filter === 'month'){ return t >= startOfMonth(today); }
+      return true; // all
+    });
+
+    if(!filteredSales.length) { historyList.innerHTML = '<div class="muted">No sales for selected period</div>'; return; }
+
+    // Grand total for filtered sales
+    const grandTotal = filteredSales.reduce((sum, s) => sum + s.items.reduce((st, it) => st + it.qty * it.price, 0), 0);
     const summaryDiv = document.createElement('div');
     summaryDiv.className = 'p-2 mb-2 rounded bg-emerald-100 text-emerald-800 font-semibold flex justify-between';
-    summaryDiv.innerHTML = `<span>Grand Total Sales</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
+    summaryDiv.innerHTML = `<span>Grand Total (filtered)</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
     historyList.appendChild(summaryDiv);
 
-    sales.slice().reverse().forEach(s=>{
+    filteredSales.slice().reverse().forEach(s=>{
       const d = document.createElement('div'); d.className='border rounded p-2 bg-white mb-2';
       const itemsHtml = s.items.map(it => `<div>${escapeHtml(it.name)} • ${it.qty}${it.unit} — ₹ ${(it.qty*it.price).toFixed(2)}</div>`).join('');
       const total = s.items.reduce((sum,it)=> sum + it.qty * it.price, 0);
@@ -348,149 +374,160 @@ const firebaseConfig = {
     });
   }
 
-  clearHistoryBtn.onclick = ()=>{ if(confirm('Clear history?')){ sales = []; saveLS(LS_SALES(currentUID), sales); refreshHistoryUI(); markDirty(true); } };
+  historyFilter.onchange = () => refreshHistoryUI();
 
-  // ---------- MERGE SYNC (safe two-way) ----------
-  // Strategy:
-  // 1) download cloud items
-  // 2) merge cloud <-> local using lastUpdated (number ms)
-  // 3) write back changed/new local items to cloud (no deletes)
-  // 4) update local storage with merged set
-  syncBtn.onclick = async () => {
+  // ---------- PUSH (upload local -> cloud, respects deleted flag) ----------
+  pushBtn.onclick = async () => {
     if(!navigator.onLine) return alert('No internet connection');
     if(!currentUID) return alert('Not signed in');
+    if(!confirm('Push local data to cloud? This will upload new/updated products & sales and propagate deletions.')) return;
 
     const vendorRef = db.collection('vendors').doc(currentUID);
     const prodCol = vendorRef.collection('products');
     const salesCol = vendorRef.collection('sales');
 
-    syncLog.textContent = ''; // clear small log area
-    logSync('Starting sync (merge mode)...');
+    try{
+      // ensure vendor profile
+      await vendorRef.set({ shopName: currentShop || '', email: currentUser.email }, { merge: true });
+
+      // upload products (create or update)
+      let uploaded = 0, deletedCloud = 0;
+      for(const p of products){
+        if(p.deleted){
+          // mark deleted in cloud (set flag) so other devices see deletion
+          await prodCol.doc(p.id).set({ deleted: true, lastUpdated: p.lastUpdated }, { merge:true });
+          uploaded++;
+        } else {
+          // set full product document with lastUpdated
+          await prodCol.doc(p.id).set(p, { merge:true });
+          uploaded++;
+        }
+      }
+
+      // upload sales (we don't delete sales)
+      let uploadedSales = 0;
+      for(const s of sales){
+        await salesCol.doc(s.id).set(s, { merge:true });
+        uploadedSales++;
+      }
+
+      // after upload, remove locally any products that were deleted (as requested)
+      const beforeCount = products.length;
+      products = products.filter(p => !p.deleted);
+      saveLS(LS_PRODUCTS(currentUID), products);
+
+      markDirty(false);
+      alert(`Push complete. Products uploaded: ${uploaded} (sales: ${uploadedSales}). Local deleted items removed.`);
+    } catch(err){
+      console.error(err);
+      alert('Push failed: ' + (err.message || err));
+      markDirty(true);
+    }
+    refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
+  };
+
+  // ---------- PULL (download cloud -> merge local, apply deletions) ----------
+  pullBtn.onclick = async () => {
+    if(!navigator.onLine) return alert('No internet connection');
+    if(!currentUID) return alert('Not signed in');
+    if(!confirm('Pull from cloud? This will download new/updated products & sales from cloud and merge with local data.')) return;
+
+    const vendorRef = db.collection('vendors').doc(currentUID);
+    const prodCol = vendorRef.collection('products');
+    const salesCol = vendorRef.collection('sales');
 
     try{
-      setSyncStatusText('Syncing...');
-      // Pull cloud data
-      const cloudProdSnap = await prodCol.get();
+      // fetch cloud lists
+      const cloudProdsSnap = await prodCol.get();
       const cloudSalesSnap = await salesCol.get();
-      const cloudProds = cloudProdSnap.docs.map(d => d.data());
+      const cloudProds = cloudProdsSnap.docs.map(d => d.data());
       const cloudSales = cloudSalesSnap.docs.map(d => d.data());
-      logSync(`Pulled ${cloudProds.length} products, ${cloudSales.length} sales from cloud.`);
 
-      // Merge products
-      const mergedProductsMap = {};
-      // add cloud
+      // MERGE PRODUCTS
+      const map = {};
+      // seed with cloud
       for(const cp of cloudProds){
-        mergedProductsMap[cp.id] = {...cp}; // assume cp has lastUpdated
+        map[cp.id] = { ...cp };
       }
-      // merge local: prefer item with higher lastUpdated
+      // integrate local: prefer newer lastUpdated
       for(const lp of products){
-        if(!lp.id) { lp.id = uid(); lp.lastUpdated = lp.lastUpdated || now(); }
-        const existing = mergedProductsMap[lp.id];
+        if(!lp.id){ lp.id = uid(); lp.lastUpdated = lp.lastUpdated || now(); }
+        const existing = map[lp.id];
         if(!existing) {
-          mergedProductsMap[lp.id] = {...lp};
-          logSync(`Product -> will upload new: ${lp.name}`);
+          map[lp.id] = { ...lp };
         } else {
           const cloudLU = existing.lastUpdated || 0;
           const localLU = lp.lastUpdated || 0;
-          if(localLU > cloudLU){
-            mergedProductsMap[lp.id] = {...lp};
-            logSync(`Product -> local newer, will upload: ${lp.name}`);
-          } else if (cloudLU > localLU){
-            // cloud is newer; will update local after merge
-            logSync(`Product -> cloud newer, will update local: ${existing.name}`);
-          }
+          if(localLU > cloudLU) map[lp.id] = { ...lp };
+          // else keep cloud
         }
       }
-      const mergedProducts = Object.values(mergedProductsMap);
 
-      // Merge sales (similar)
-      const mergedSalesMap = {};
-      for(const cs of cloudSales){ mergedSalesMap[cs.id] = {...cs}; }
+      // Remove cloud-deleted items from merged map and also schedule cloud cleanup
+      const finalProducts = [];
+      const toDeleteCloudIds = [];
+      for(const id in map){
+        const item = map[id];
+        if(item.deleted){
+          // if item marked deleted in cloud, remove locally and also schedule cloud delete
+          toDeleteCloudIds.push(id);
+        } else {
+          finalProducts.push(item);
+        }
+      }
+
+      // MERGE SALES (no deletion for sales)
+      const salesMap = {};
+      for(const cs of cloudSales) salesMap[cs.id] = { ...cs };
       for(const ls of sales){
         if(!ls.id){ ls.id = uid(); ls.lastUpdated = ls.lastUpdated || now(); }
-        const existing = mergedSalesMap[ls.id];
-        if(!existing){
-          mergedSalesMap[ls.id] = {...ls};
-          logSync(`Sale -> will upload new: ${ls.id}`);
-        } else {
+        const existing = salesMap[ls.id];
+        if(!existing) salesMap[ls.id] = { ...ls };
+        else {
           const cloudLU = existing.lastUpdated || 0;
           const localLU = ls.lastUpdated || 0;
-          if(localLU > cloudLU){
-            mergedSalesMap[ls.id] = {...ls};
-            logSync(`Sale -> local newer, will upload: ${ls.id}`);
-          } else if(cloudLU > localLU){
-            logSync(`Sale -> cloud newer, will update local: ${existing.id}`);
-          }
+          if(localLU > cloudLU) salesMap[ls.id] = { ...ls };
         }
       }
-      const mergedSales = Object.values(mergedSalesMap);
+      const finalSales = Object.values(salesMap);
 
-      // Write back changes to cloud (only items where local is newer or missing in cloud)
-      let uploadedProducts = 0, uploadedSales = 0;
-      // products: for each merged product, if local has it and local.lastUpdated >= cloud.lastUpdated -> set
-      for(const p of mergedProducts){
-        const cloudItem = cloudProds.find(x=>x.id===p.id);
-        const localItem = products.find(x=>x.id===p.id);
-        const localLU = (localItem && localItem.lastUpdated) ? localItem.lastUpdated : 0;
-        const cloudLU = (cloudItem && cloudItem.lastUpdated) ? cloudItem.lastUpdated : 0;
-        // upload if local exists and is newer or cloud missing
-        if(localItem && localLU >= cloudLU){
-          await prodCol.doc(p.id).set(p, { merge: true });
-          uploadedProducts++;
-        }
-      }
-      // sales
-      for(const s of mergedSales){
-        const cloudItem = cloudSales.find(x=>x.id===s.id);
-        const localItem = sales.find(x=>x.id===s.id);
-        const localLU = (localItem && localItem.lastUpdated) ? localItem.lastUpdated : 0;
-        const cloudLU = (cloudItem && cloudItem.lastUpdated) ? cloudItem.lastUpdated : 0;
-        if(localItem && localLU >= cloudLU){
-          await salesCol.doc(s.id).set(s, { merge: true });
-          uploadedSales++;
-        }
-      }
-
-      // Save merged to local
-      products = mergedProducts.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
-      sales = mergedSales.sort((a,b)=> b.time - a.time); // newest first
+      // Save merged locally
+      products = finalProducts.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      sales = finalSales.sort((a,b)=> b.time - a.time);
       saveLS(LS_PRODUCTS(currentUID), products);
       saveLS(LS_SALES(currentUID), sales);
 
-      refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
-      markDirty(false);
-      setSyncStatusText('Synced ✅');
+      // Cleanup cloud docs that were marked deleted (so they don't reappear later)
+      for(const did of toDeleteCloudIds){
+        await prodCol.doc(did).delete().catch(()=>{ /* ignore */ });
+      }
 
-      const summary = `Sync complete. Uploaded products: ${uploadedProducts}, uploaded sales: ${uploadedSales}. Merged totals — products: ${products.length}, sales: ${sales.length}.`;
-      logSync(summary);
-      alert('Sync completed: ' + summary);
+      markDirty(false);
+      alert(`Pull complete. Products: ${products.length}, Sales: ${sales.length}`);
     } catch(err){
       console.error(err);
-      logSync('Sync error: ' + (err.message || err));
-      setSyncStatusText('Sync failed');
+      alert('Pull failed: ' + (err.message || err));
       markDirty(true);
-      alert('Sync failed: ' + (err.message || err));
     }
+    refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
   };
 
-  // ---------- connectivity handlers ----------
-  window.addEventListener('online', ()=> { syncStatusEl.textContent = dirty ? 'Pending 🟡' : 'Synced ✅'; logSync('Online'); });
-  window.addEventListener('offline', ()=> { syncStatusEl.textContent = 'Offline 🔴'; logSync('Offline'); });
+  // ---------- connectivity ----------
+  window.addEventListener('online', ()=> { syncStatusEl.textContent = dirty ? 'Pending 🟡' : 'Synced ✅'; });
+  window.addEventListener('offline', ()=> { syncStatusEl.textContent = 'Offline 🔴'; });
 
-  // ---------- initial state ----------
-  syncStatusEl.textContent = navigator.onLine ? 'Not signed in' : 'Offline 🔴';
-  logSync('App loaded');
+  syncStatusEl.textContent = navigator.onLine ? 'Manual sync' : 'Offline 🔴';
 
-  // ---------- small safety: ensure lastUpdated on old local items (upgrade) ----------
-  function upgradeLocalTimestamps(){
-    let changed = false;
-    products.forEach(p => { if(!p.lastUpdated){ p.lastUpdated = p._createdAt || now(); changed = true; }});
-    sales.forEach(s => { if(!s.lastUpdated){ s.lastUpdated = s._createdAt || now(); changed = true; }});
-    if(changed){ saveLS(LS_PRODUCTS(currentUID), products); saveLS(LS_SALES(currentUID), sales); markDirty(true); }
-  }
+  // ---------- initial UI refresh helpers ----------
+  function refreshProductsUI(){ /* implemented above, but call here to ensure up-to-date */ }
+  function refreshCartUI(){ /* implemented above, but call here to ensure up-to-date */ }
+  function refreshHistoryUI(){ /* implemented above, but call here to ensure up-to-date */ }
+  // functions already defined above; call to initialize
+  // (they are hoisted here so calls below work)
+  refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
 
-  // call after login when products/sales loaded
-  // upgradeLocalTimestamps(); // called in onAuthStateChanged implicitly by previous load
+  // ---------- small safety: upgrade older local items without lastUpdated ----------
+  // run after login if needed (handled implicitly when merging)
 
 })();
 </script>
