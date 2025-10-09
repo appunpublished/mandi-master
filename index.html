@@ -3,112 +3,147 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Vendor POS — Final (Push / Pull + Delete + Date Filter)</title>
+  <title>Vendor POS — Bilingual + WhatsApp Billing</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+
   <style>
     body { background:#f8fafc; font-family:Inter, system-ui, sans-serif; }
-    .big-btn{ padding:10px 14px; border-radius:10px; font-weight:600; }
+    .big-btn{ padding:10px 14px; border-radius:10px; font-weight:600; min-height:44px; }
     .muted { color:#6b7280; }
     .small { font-size:.85rem; }
-    .chip { padding:6px 10px; border-radius:999px; background:#eef2ff; cursor:pointer; }
+    .lang-toggle { padding:8px 10px; border-radius:8px; background:#eef2ff; cursor:pointer; font-weight:600; }
+    /* toast */
+    #toast { position: fixed; left:50%; transform: translateX(-50%); bottom:24px; background:#111827; color:white; padding:10px 16px; border-radius:8px; display:none; z-index:2000; box-shadow:0 6px 18px rgba(0,0,0,0.12); }
+    /* modal */
+    .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:2000; }
   </style>
 </head>
 <body class="min-h-screen flex items-start justify-center p-4">
 
+  <!-- TOAST -->
+  <div id="toast"></div>
+
+  <!-- simple modal for bill preview -->
+  <div id="billModal" style="display:none;" class="modal-backdrop">
+    <div class="bg-white rounded-lg p-4 max-w-md w-full shadow">
+      <h3 class="font-semibold mb-2">Bill / बिल</h3>
+      <pre id="billPreview" class="whitespace-pre-wrap text-sm bg-slate-50 p-2 rounded max-h-64 overflow-auto"></pre>
+      <div class="flex gap-2 mt-3">
+        <button id="copyBillBtn" class="flex-1 big-btn bg-emerald-500 text-white">📋 Copy</button>
+        <button id="closeBillBtn" class="flex-1 big-btn bg-slate-200">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- AUTH -->
   <div id="authWrap" class="w-full max-w-md bg-white rounded-xl shadow p-6">
-    <h2 class="text-2xl font-bold mb-3 text-center">Vendor — Register / Login</h2>
-    <input id="regShop" placeholder="Shop name (for registration)" class="w-full border rounded p-3 mb-2" />
-    <input id="email" type="email" placeholder="Email" class="w-full border rounded p-3 mb-2" />
-    <input id="password" type="password" placeholder="Password" class="w-full border rounded p-3 mb-3" />
+    <h2 data-i18n="title_auth" class="text-2xl font-bold mb-3 text-center">Vendor — Register / Login</h2>
+    <input id="regShop" placeholder="" data-i18n-placeholder="ph_shop" class="w-full border rounded p-3 mb-2" />
+    <input id="email" type="email" placeholder="" data-i18n-placeholder="ph_email" class="w-full border rounded p-3 mb-2" />
+    <input id="password" type="password" placeholder="" data-i18n-placeholder="ph_password" class="w-full border rounded p-3 mb-3" />
     <div class="flex gap-2">
-      <button id="registerBtn" class="flex-1 big-btn bg-sky-500 text-white">Register</button>
-      <button id="loginBtn" class="flex-1 big-btn bg-emerald-500 text-white">Login</button>
+      <button id="registerBtn" class="flex-1 big-btn bg-sky-500 text-white" data-i18n="btn_register">Register</button>
+      <button id="loginBtn" class="flex-1 big-btn bg-emerald-500 text-white" data-i18n="btn_login">Login</button>
     </div>
-    <p class="text-xs muted mt-3">Register saves Shop name. Login downloads your vendor data (if present).</p>
+    <p class="text-xs muted mt-3" data-i18n="auth_note">Register saves Shop name. Login downloads your vendor data (if present).</p>
   </div>
 
   <!-- APP -->
   <div id="appWrap" class="hidden w-full max-w-xl">
     <header class="flex items-center justify-between mb-4">
       <div>
-        <div id="shopName" class="text-lg font-bold">Vendor POS</div>
+        <div id="shopName" class="text-lg font-bold" data-i18n="app_title">Vendor POS</div>
         <div id="vendorInfo" class="small muted">email • uid</div>
       </div>
       <div class="flex items-center gap-2">
-        <div id="syncStatus" class="px-3 py-1 rounded small muted">Manual sync</div>
-        <button id="pushBtn" class="big-btn bg-emerald-500 text-white small">⬆️ Push</button>
-        <button id="pullBtn" class="big-btn bg-sky-500 text-white small">⬇️ Pull</button>
-        <button id="logoutBtn" class="big-btn bg-red-500 text-white small">Logout</button>
+        <div id="syncStatus" class="px-3 py-1 rounded small muted" data-i18n="sync_manual">Manual sync</div>
+        <button id="pushBtn" class="big-btn bg-amber-300 text-white small" data-i18n="btn_push">⬆️ Push</button>
+        <button id="pullBtn" class="big-btn bg-sky-500 text-white small" data-i18n="btn_pull">⬇️ Pull</button>
+        <button id="langToggle" class="lang-toggle" title="Toggle language">🌐 हिंदी</button>
+        <button id="logoutBtn" class="big-btn bg-red-500 text-white small" data-i18n="btn_logout">Logout</button>
       </div>
     </header>
 
     <nav class="flex gap-2 mb-4">
-      <button id="tabProducts" class="flex-1 big-btn bg-emerald-100">Products</button>
-      <button id="tabSales" class="flex-1 big-btn bg-slate-100">Sales</button>
-      <button id="tabHistory" class="flex-1 big-btn bg-slate-100">History</button>
+      <button id="tabProducts" class="flex-1 big-btn bg-emerald-100" data-i18n="tab_products">Products</button>
+      <button id="tabSales" class="flex-1 big-btn bg-slate-100" data-i18n="tab_sales">Sales</button>
+      <button id="tabHistory" class="flex-1 big-btn bg-slate-100" data-i18n="tab_history">History</button>
     </nav>
 
     <main class="bg-white rounded-xl p-4 shadow">
       <!-- PRODUCTS -->
       <section id="view-products">
-        <h3 class="font-semibold mb-2">Add / Edit Product</h3>
+        <h3 class="font-semibold mb-2" data-i18n="heading_add_edit">Add / Edit Product</h3>
         <div class="space-y-2">
-          <input id="p_name" placeholder="Name (e.g., Tomato)" class="w-full border rounded p-2" />
+          <input id="p_name" data-i18n-placeholder="ph_product_name" placeholder="Name (e.g., Tomato)" class="w-full border rounded p-2" />
           <div class="flex gap-2">
-            <input id="p_price" type="number" placeholder="Price (₹)" class="flex-1 border rounded p-2" />
-            <select id="p_unit" class="border rounded p-2 w-36">
-              <option value="kg">kg</option><option value="g">g</option><option value="piece">piece</option><option value="dozen">dozen</option>
+            <input id="p_price" type="number" data-i18n-placeholder="ph_price" placeholder="Price (₹)" class="flex-1 border rounded p-2" />
+            <select id="p_unit" class="border rounded p-2 w-36" aria-label="unit">
+              <option value="kg" data-i18n="unit_kg">kg</option>
+              <option value="g" data-i18n="unit_g">g</option>
+              <option value="piece" data-i18n="unit_piece">piece</option>
+              <option value="dozen" data-i18n="unit_dozen">dozen</option>
             </select>
-            <input id="p_qty" type="number" placeholder="Qty (opt)" class="w-28 border rounded p-2" />
+            <input id="p_qty" type="number" data-i18n-placeholder="ph_qty" placeholder="Qty (opt)" class="w-28 border rounded p-2" />
           </div>
           <div class="flex gap-2 mt-2">
-            <button id="saveProduct" class="flex-1 big-btn bg-emerald-500 text-white">Save</button>
-            <button id="clearProduct" class="flex-1 big-btn bg-slate-200">Clear</button>
+            <button id="saveProduct" class="flex-1 big-btn bg-emerald-500 text-white" data-i18n="btn_save">Save</button>
+            <button id="clearProduct" class="flex-1 big-btn bg-slate-200" data-i18n="btn_clear">Clear</button>
           </div>
         </div>
         <hr class="my-3" />
-        <h4 class="font-semibold mb-2">Products</h4>
+        <h4 class="font-semibold mb-2" data-i18n="heading_products">Products</h4>
         <div id="productList" class="space-y-2 max-h-64 overflow-auto"></div>
       </section>
 
       <!-- SALES -->
       <section id="view-sales" class="hidden">
-        <h3 class="font-semibold mb-2">Record Sale</h3>
-        <input id="saleSearch" placeholder="Type first letters to search" class="w-full border rounded p-2 mb-2" />
+        <h3 class="font-semibold mb-2" data-i18n="heading_record_sale">Record Sale</h3>
+        <input id="saleSearch" data-i18n-placeholder="ph_search" placeholder="Type first letters to search" class="w-full border rounded p-2 mb-2" />
         <select id="sale_product" class="w-full border rounded p-2 mb-2"></select>
         <div class="flex gap-2">
-          <input id="sale_qty" type="number" placeholder="Quantity" class="flex-1 border rounded p-2" />
+          <input id="sale_qty" type="number" data-i18n-placeholder="ph_qty" placeholder="Quantity" class="flex-1 border rounded p-2" />
           <div id="sale_unit_box" class="w-28 border rounded p-2 text-center muted">unit</div>
         </div>
+
+        <!-- customer number input for WhatsApp -->
+        <div class="mt-3 mb-2">
+          <input id="custNumber" type="tel" placeholder="Customer WhatsApp number (optional) / ग्राहक नंबर (वैकल्पिक)" class="w-full border rounded p-2" />
+        </div>
+
         <div class="flex gap-2 mt-3">
-          <button id="addToCart" class="flex-1 big-btn bg-amber-400 text-white">Add to Cart</button>
-          <button id="openCart" class="flex-1 big-btn bg-slate-200">Open Cart</button>
+          <button id="addToCart" class="flex-1 big-btn bg-amber-400 text-white" data-i18n="btn_add_cart">Add to Cart</button>
+          <button id="openCart" class="flex-1 big-btn bg-slate-200" data-i18n="btn_open_cart">Open Cart</button>
         </div>
         <hr class="my-3" />
-        <h4 class="font-semibold">Cart</h4>
+        <h4 class="font-semibold" data-i18n="heading_cart">Cart</h4>
         <div id="quickCart" class="space-y-2 max-h-56 overflow-auto"></div>
         <div class="mt-3">
-          <button id="checkoutBtn" class="w-full big-btn bg-emerald-600 text-white">Checkout</button>
+          <button id="checkoutBtn" class="w-full big-btn bg-emerald-600 text-white" data-i18n="btn_checkout">Checkout</button>
+        </div>
+
+        <!-- Send Bill area appears after checkout -->
+        <div id="sendBillArea" class="mt-3" style="display:none;">
+          <button id="sendBillBtn" class="w-full big-btn bg-emerald-700 text-white">📱 Send Bill / बिल भेजें</button>
         </div>
       </section>
 
       <!-- HISTORY -->
       <section id="view-history" class="hidden">
         <div class="flex items-center justify-between">
-          <h3 class="font-semibold mb-2">Sales History</h3>
+          <h3 class="font-semibold mb-2" data-i18n="heading_history">Sales History</h3>
           <div class="flex gap-2 items-center">
-            <div class="small muted mr-2">Filter</div>
+            <div class="small muted mr-2" data-i18n="lbl_filter">Filter</div>
             <select id="historyFilter" class="border rounded p-2 small">
-              <option value="all">All</option>
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
+              <option value="all" data-i18n="filter_all">All</option>
+              <option value="today" data-i18n="filter_today">Today</option>
+              <option value="yesterday" data-i18n="filter_yesterday">Yesterday</option>
+              <option value="week" data-i18n="filter_week">This Week</option>
+              <option value="month" data-i18n="filter_month">This Month</option>
             </select>
           </div>
         </div>
@@ -121,6 +156,7 @@
 
 <script>
 (async function(){
+
   // ---------- FIREBASE CONFIG ----------
   const firebaseConfig = {
   apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
@@ -133,9 +169,201 @@
 };
 
   // ---------- INIT ----------
-  firebase.initializeApp(firebaseConfig);
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
+
+  // ---------- I18N DICTIONARY (EN / HI) ----------
+  const translations = {
+    en: {
+      title_auth: "Vendor — Register / Login",
+      ph_shop: "Shop name (for registration)",
+      ph_email: "Email",
+      ph_password: "Password",
+      btn_register: "Register",
+      btn_login: "Login",
+      auth_note: "Register saves Shop name. Login downloads your vendor data (if present).",
+      app_title: "Vendor POS",
+      sync_manual: "Manual sync",
+      btn_push: "⬆️ Push",
+      btn_pull: "⬇️ Pull",
+      btn_logout: "Logout",
+      tab_products: "Products",
+      tab_sales: "Sales",
+      tab_history: "History",
+      heading_add_edit: "Add / Edit Product",
+      ph_product_name: "Name (e.g., Tomato)",
+      ph_price: "Price (₹)",
+      ph_qty: "Qty (opt)",
+      unit_kg: "kg",
+      unit_g: "g",
+      unit_piece: "piece",
+      unit_dozen: "dozen",
+      btn_save: "Save",
+      btn_clear: "Clear",
+      heading_products: "Products",
+      heading_record_sale: "Record Sale",
+      ph_search: "Search product",
+      btn_add_cart: "Add to Cart",
+      btn_open_cart: "Open Cart",
+      heading_cart: "Cart",
+      btn_checkout: "Checkout",
+      heading_history: "Sales History",
+      lbl_filter: "Filter",
+      filter_all: "All",
+      filter_today: "Today",
+      filter_yesterday: "Yesterday",
+      filter_week: "This Week",
+      filter_month: "This Month",
+      // alerts/prompts
+      registered: "Registered. Now login.",
+      enter_shop_email_pass: "Enter shop, email & password to register.",
+      enter_email_pass: "Enter email & password",
+      not_signed_in: "Not signed in",
+      no_internet: "No internet connection",
+      product_required: "Name required",
+      confirm_delete_product: "Delete this product?",
+      product_deleted_local: "Product deleted locally",
+      sale_recorded_local: "Sale recorded locally",
+      push_confirm: "Push local data to cloud? This will upload new/updated products & sales and propagate deletions.",
+      pull_confirm: "Pull from cloud? This will download new/updated products & sales from cloud and merge with local data.",
+      push_complete: "Push complete.",
+      pull_complete: "Pull complete.",
+      sync_failed: "Sync failed",
+      bill_ready: "Bill ready to send",
+      bill_copied: "Bill copied to clipboard"
+    },
+    hi: {
+      title_auth: "विक्रेता — पंजीकरण / लॉगिन",
+      ph_shop: "दुकान का नाम (पंजीकरण के लिए)",
+      ph_email: "ईमेल",
+      ph_password: "पासवर्ड",
+      btn_register: "रजिस्टर करें",
+      btn_login: "लॉगिन",
+      auth_note: "रजिस्टर करने पर दुकान का नाम सेव होगा। लॉगिन करने पर आपका डाटा डाउनलोड होगा (यदि उपलब्ध)।",
+      app_title: "विक्रेता POS",
+      sync_manual: "मैनुअल सिंक",
+      btn_push: "⬆️ भेजें",
+      btn_pull: "⬇️ प्राप्त करें",
+      btn_logout: "लॉगआउट",
+      tab_products: "उत्पाद",
+      tab_sales: "बिक्री",
+      tab_history: "इतिहास",
+      heading_add_edit: "उत्पाद जोड़ें / संपादित करें",
+      ph_product_name: "नाम (उदा., टमाटर)",
+      ph_price: "कीमत (₹)",
+      ph_qty: "मात्रा (वैकल्पिक)",
+      unit_kg: "किलो",
+      unit_g: "ग्राम",
+      unit_piece: "पीस",
+      unit_dozen: "डज़न",
+      btn_save: "सहेजें",
+      btn_clear: "साफ़ करें",
+      heading_products: "उत्पाद",
+      heading_record_sale: "बिक्री दर्ज करें",
+      ph_search: "उत्पाद खोजें",
+      btn_add_cart: "कार्ट में जोड़ें",
+      btn_open_cart: "कार्ट खोलें",
+      heading_cart: "कार्ट",
+      btn_checkout: "चेकआउट",
+      heading_history: "बिक्री इतिहास",
+      lbl_filter: "फ़िल्टर",
+      filter_all: "सब",
+      filter_today: "आज",
+      filter_yesterday: "कल",
+      filter_week: "यह सप्ताह",
+      filter_month: "यह महीना",
+      // alerts/prompts
+      registered: "रजिस्टर हो गया। अब लॉगिन करें।",
+      enter_shop_email_pass: "पंजीकरण के लिए दुकान, ईमेल और पासवर्ड दर्ज करें।",
+      enter_email_pass: "ईमेल और पासवर्ड दर्ज करें",
+      not_signed_in: "लॉगिन नहीं किया गया है",
+      no_internet: "इंटरनेट कनेक्शन नहीं है",
+      product_required: "नाम आवश्यक है",
+      confirm_delete_product: "क्या आप इस उत्पाद को हटाना चाहते हैं?",
+      product_deleted_local: "उत्पाद स्थानीय रूप से हटाया गया",
+      sale_recorded_local: "बिक्री स्थानीय रूप से दर्ज की गई",
+      push_confirm: "लोकल डेटा क्लाउड पर भेजें? इससे नए/अपडेट किए गए उत्पाद और बिक्री भेजे जाएंगे और हटाने का प्रभाव भी होगा।",
+      pull_confirm: "क्लाउड से प्राप्त करें? इससे क्लाउड से नए/अपडेट किए गए उत्पाद और बिक्री डाउनलोड होंगे और लोकल के साथ मर्ज होंगे।",
+      push_complete: "पुश पूरा हुआ।",
+      pull_complete: "पुल पूरा हुआ।",
+      sync_failed: "सिंक विफल",
+      bill_ready: "बिल भेजने के लिए तैयार है",
+      bill_copied: "बिल क्लिपबोर्ड पर कॉपी किया गया"
+    }
+  };
+
+  // ---------- I18N HELPERS ----------
+  function getSavedLang(){
+    const s = localStorage.getItem('language');
+    if(s) return s;
+    const nav = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    return nav.startsWith('hi') ? 'hi' : 'en';
+  }
+  let currentLang = getSavedLang();
+
+  function applyTranslations(lang){
+    currentLang = lang;
+    // apply text nodes with data-i18n
+    document.querySelectorAll('[data-i18n]').forEach(el=>{
+      const key = el.getAttribute('data-i18n');
+      if(translations[lang] && translations[lang][key]) el.textContent = translations[lang][key];
+    });
+    // apply placeholders
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>{
+      const key = el.getAttribute('data-i18n-placeholder');
+      if(translations[lang] && translations[lang][key]) el.placeholder = translations[lang][key];
+    });
+    // apply select option texts (some are marked with data-i18n)
+    document.querySelectorAll('option[data-i18n]').forEach(opt=>{
+      const key = opt.getAttribute('data-i18n');
+      if(translations[lang] && translations[lang][key]) opt.textContent = translations[lang][key];
+    });
+
+    // update toggle button text: show the other language label
+    const toggle = document.getElementById('langToggle');
+    if(toggle){
+      toggle.textContent = (lang === 'en') ? '🌐 हिंदी' : '🌐 English';
+    }
+
+    localStorage.setItem('language', lang);
+  }
+
+  function showBilingualAlert(keyOrText){
+    let enText = '', hiText = '';
+    if(typeof keyOrText === 'string' && translations.en[keyOrText] && translations.hi[keyOrText]){
+      enText = translations.en[keyOrText];
+      hiText = translations.hi[keyOrText];
+    } else if (typeof keyOrText === 'string'){
+      enText = keyOrText;
+      hiText = translations.hi['sync_failed'] || 'त्रुटि';
+    } else {
+      enText = String(keyOrText);
+      hiText = translations.hi['sync_failed'] || 'त्रुटि';
+    }
+    alert(enText + " / " + hiText);
+  }
+  function showBilingualConfirm(key){
+    let enText = translations.en[key] || key;
+    let hiText = translations.hi[key] || key;
+    return confirm(enText + " / " + hiText);
+  }
+
+  // toast helper
+  function showToast(textKeyOrText){
+    let text = '';
+    if(typeof textKeyOrText === 'string' && translations[currentLang] && translations[currentLang][textKeyOrText]){
+      // show in current language only for toast (short)
+      text = translations[currentLang][textKeyOrText];
+    } else {
+      text = textKeyOrText;
+    }
+    const t = document.getElementById('toast');
+    t.textContent = text;
+    t.style.display = 'block';
+    setTimeout(()=>{ t.style.opacity = '1'; }, 10);
+    setTimeout(()=>{ t.style.display = 'none'; t.style.opacity = '0'; }, 3000);
+  }
 
   // ---------- HELPERS & LS ----------
   const $ = id => document.getElementById(id);
@@ -170,16 +398,19 @@
 
   const registerBtn = $('registerBtn'), loginBtn = $('loginBtn'), regShop = $('regShop'), emailInp = $('email'), passInp = $('password');
 
+  const sendBillArea = $('sendBillArea'), sendBillBtn = $('sendBillBtn'), custNumberEl = $('custNumber');
+  const billModal = $('billModal'), billPreview = $('billPreview'), copyBillBtn = $('copyBillBtn'), closeBillBtn = $('closeBillBtn');
+
   // UTIL
   const now = () => Date.now();
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function markDirty(v=true){ dirty = v; syncStatusEl.textContent = (!navigator.onLine) ? 'Offline 🔴' : (dirty ? 'Pending 🟡' : 'Synced ✅'); }
+  function markDirty(v=true){ dirty = v; syncStatusEl.textContent = (!navigator.onLine) ? translations.en['no_internet'] + ' / ' + translations.hi['no_internet'] : (dirty ? translations.en['sync_manual'] + ' / ' + translations.hi['sync_manual'] : translations.en['sync_manual'] + ' / ' + translations.hi['sync_manual']); }
 
   // ---------- AUTH ----------
   registerBtn.onclick = async () => {
     const shop = regShop.value.trim(); const email = emailInp.value.trim(); const pass = passInp.value;
-    if(!shop || !email || !pass) return alert('Enter shop, email & password to register.');
+    if(!shop || !email || !pass) return showBilingualAlert('enter_shop_email_pass');
     try{
       const cred = await auth.createUserWithEmailAndPassword(email, pass);
       const user = cred.user;
@@ -188,14 +419,14 @@
         email: email,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge:true });
-      alert('Registered. Now login.');
-    } catch(e){ alert(e.message || e); }
+      showBilingualAlert('registered');
+    } catch(e){ showBilingualAlert(e.message || 'Error'); }
   };
 
   loginBtn.onclick = async () => {
     const email = emailInp.value.trim(); const pass = passInp.value;
-    if(!email || !pass) return alert('Enter email & password');
-    try{ await auth.signInWithEmailAndPassword(email, pass); } catch(e){ alert(e.message || e); }
+    if(!email || !pass) return showBilingualAlert('enter_email_pass');
+    try{ await auth.signInWithEmailAndPassword(email, pass); } catch(e){ showBilingualAlert(e.message || 'Error'); }
   };
 
   logoutBtn.onclick = async () => { await auth.signOut(); };
@@ -235,7 +466,7 @@
   // ---------- PRODUCTS CRUD (local) ----------
   let editProductId = null;
   saveProductBtn.onclick = () => {
-    const name = p_name.value.trim(); if(!name) return alert('Name required');
+    const name = p_name.value.trim(); if(!name) return showBilingualAlert('product_required');
     const price = Number(p_price.value) || 0; const qty = p_qty.value === '' ? '' : Number(p_qty.value); const unit = p_unit.value;
     if(editProductId){
       const i = products.findIndex(x => x.id === editProductId);
@@ -259,17 +490,19 @@
     active.forEach(p=>{
       const row = document.createElement('div');
       row.className = 'flex justify-between items-center border rounded p-2';
+      // show translated labels for edit/delete buttons
+      const editLabel = translations[currentLang]['btn_save'] || 'Edit';
+      const delLabel = translations[currentLang]['btn_clear'] || 'Del';
       row.innerHTML = `<div><div class="font-semibold">${escapeHtml(p.name)}</div><div class="small muted">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty!=='' ? ' • ' + p.qty + ' ' + p.unit : ''}</div></div>
         <div class="flex gap-2">
-          <button class="bg-sky-500 text-white px-2 rounded edit">Edit</button>
-          <button class="bg-red-500 text-white px-2 rounded del">Del</button>
+          <button class="bg-sky-500 text-white px-2 rounded edit">${escapeHtml(editLabel)}</button>
+          <button class="bg-red-500 text-white px-2 rounded del">${escapeHtml(delLabel)}</button>
         </div>`;
       row.querySelector('.edit').onclick = ()=>{ editProductId = p.id; p_name.value = p.name; p_price.value = p.price; p_qty.value = p.qty; p_unit.value = p.unit; window.scrollTo({top:0,behavior:'smooth'}); };
       row.querySelector('.del').onclick = ()=>{ 
-        if(!confirm('Delete this product?')) return;
-        // mark deleted locally (soft-delete)
+        if(!showBilingualConfirm('confirm_delete_product')) return;
         const idx = products.findIndex(x=>x.id===p.id);
-        if(idx>=0){ products[idx].deleted = true; products[idx].lastUpdated = now(); saveLS(LS_PRODUCTS(currentUID), products); markDirty(true); refreshProductsUI(); }
+        if(idx>=0){ products[idx].deleted = true; products[idx].lastUpdated = now(); saveLS(LS_PRODUCTS(currentUID), products); markDirty(true); refreshProductsUI(); showBilingualAlert('product_deleted_local'); }
       };
       productList.appendChild(row);
     });
@@ -292,8 +525,8 @@
   }
 
   addToCartBtn.onclick = ()=>{
-    const pid = sale_product.value; const p = products.find(x=>x.id===pid); if(!p) return alert('Select product');
-    const q = Number(sale_qty.value); if(!q || q<=0) return alert('Enter qty');
+    const pid = sale_product.value; const p = products.find(x=>x.id===pid); if(!p) return showBilingualAlert('product_required');
+    const q = Number(sale_qty.value); if(!q || q<=0) return showBilingualAlert('product_required');
     const existing = cart.find(x=>x.id===p.id && x.unit===p.unit);
     if(existing) existing.qty = Number(existing.qty) + q; else cart.push({ id: p.id, name: p.name, price: p.price, qty: q, unit: p.unit });
     sale_qty.value=''; refreshCartUI();
@@ -322,7 +555,7 @@
   }
 
   checkoutBtn.onclick = ()=>{
-    if(!cart.length) return alert('Cart empty');
+    if(!cart.length) return showBilingualAlert('product_required');
     const sale = { id: uid(), time: now(), timeStr: new Date().toLocaleString(), items: cart.map(x=>({...x})), lastUpdated: now() };
     sales.push(sale);
     saveLS(LS_SALES(currentUID), sales);
@@ -333,9 +566,78 @@
     });
     saveLS(LS_PRODUCTS(currentUID), products);
     cart = []; refreshCartUI(); refreshProductsUI(); refreshHistoryUI(); markDirty(true);
-    alert('Sale recorded locally');
+    showBilingualAlert('sale_recorded_local');
+
+    // show send bill area
+    sendBillArea.style.display = 'block';
+    showToast('bill_ready');
   };
 
+  // ---------- prepare bilingual bill text ----------
+  function buildBilingualBill(sale){
+    // sale: a sale object as saved; include shop name and footer
+    const shop = currentShop || 'Shop';
+    const dt = new Date(sale.time);
+    const dtStr = dt.toLocaleString();
+    const lines = [];
+    lines.push(`🧾 ${shop} / दुकान: ${shop}`);
+    lines.push(`Date / दिनांक: ${dtStr}`);
+    lines.push(`-----------------------------`);
+    sale.items.forEach(it=>{
+      const enLine = `${it.name} — ${it.qty} ${it.unit} × ₹${Number(it.price)} = ₹${(it.qty * it.price).toFixed(2)}`;
+      // try to find Hindi name fallback same as en (we don't have translations for product names)
+      const hiLine = `${it.name} — ${it.qty} ${it.unit} × ₹${Number(it.price)} = ₹${(it.qty * it.price).toFixed(2)}`;
+      lines.push(`${enLine} / ${hiLine}`);
+    });
+    lines.push(`-----------------------------`);
+    const total = sale.items.reduce((s,it)=> s + (it.qty * it.price), 0);
+    lines.push(`Total / कुल: ₹${total.toFixed(2)}`);
+    lines.push(``);
+    lines.push(`Thank you! / धन्यवाद 🙏`);
+    lines.push(`Bill generated using Vendor POS App / बिल Vendor POS App से बनाया गया 📱`);
+    return lines.join('\n');
+  }
+
+  // ---------- Send Bill logic ----------
+  sendBillBtn.onclick = () => {
+    // use the most recent sale
+    if(!sales.length) return showBilingualAlert('product_required');
+    const sale = sales[sales.length - 1];
+    const text = buildBilingualBill(sale);
+    const rawNumber = (custNumberEl.value || '').trim();
+    if(rawNumber){
+      // normalize number: remove non-digits
+      let digits = rawNumber.replace(/\D/g,'');
+      // if 10-digit assume India -> prefix 91
+      if(digits.length === 10) digits = '91' + digits;
+      // if starts with 0, remove leading zeros then handle
+      if(digits.startsWith('0')) digits = digits.replace(/^0+/, '');
+      const encoded = encodeURIComponent(text);
+      const waUrl = `https://wa.me/${digits}?text=${encoded}`;
+      // open in new tab/window - mobile will open app
+      window.open(waUrl, '_blank');
+      showToast('bill_ready');
+    } else {
+      // show modal with bill & copy option
+      billPreview.textContent = text;
+      billModal.style.display = 'flex';
+    }
+  };
+
+  copyBillBtn.onclick = async () => {
+    try{
+      await navigator.clipboard.writeText(billPreview.textContent);
+      showToast('bill_copied');
+    }catch(e){
+      // fallback select & execCommand
+      const ta = document.createElement('textarea'); ta.value = billPreview.textContent; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showToast('bill_copied'); } catch(e2){ alert('Copy failed'); }
+      ta.remove();
+    }
+  };
+  closeBillBtn.onclick = () => { billModal.style.display = 'none'; };
+
+  // ---------- HISTORY ----------
   function refreshHistoryUI(){
     historyList.innerHTML = '';
 
@@ -362,7 +664,7 @@
     const grandTotal = filteredSales.reduce((sum, s) => sum + s.items.reduce((st, it) => st + it.qty * it.price, 0), 0);
     const summaryDiv = document.createElement('div');
     summaryDiv.className = 'p-2 mb-2 rounded bg-emerald-100 text-emerald-800 font-semibold flex justify-between';
-    summaryDiv.innerHTML = `<span>Grand Total (filtered)</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
+    summaryDiv.innerHTML = `<span>${translations[currentLang]['heading_history'] || 'Grand Total (filtered)'}</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
     historyList.appendChild(summaryDiv);
 
     filteredSales.slice().reverse().forEach(s=>{
@@ -373,71 +675,55 @@
       historyList.appendChild(d);
     });
   }
-
   historyFilter.onchange = () => refreshHistoryUI();
 
-  // ---------- PUSH (upload local -> cloud, respects deleted flag) ----------
+  // ---------- PUSH / PULL (merge) ----------
   pushBtn.onclick = async () => {
-    if(!navigator.onLine) return alert('No internet connection');
-    if(!currentUID) return alert('Not signed in');
-    if(!confirm('Push local data to cloud? This will upload new/updated products & sales and propagate deletions.')) return;
+    if(!navigator.onLine) return showBilingualAlert('no_internet');
+    if(!currentUID) return showBilingualAlert('not_signed_in');
+    if(!showBilingualConfirm('push_confirm')) return;
 
     const vendorRef = db.collection('vendors').doc(currentUID);
     const prodCol = vendorRef.collection('products');
     const salesCol = vendorRef.collection('sales');
 
     try{
-      // ensure vendor profile
       await vendorRef.set({ shopName: currentShop || '', email: currentUser.email }, { merge: true });
 
-      // upload products (create or update)
-      let uploaded = 0, deletedCloud = 0;
       for(const p of products){
         if(p.deleted){
-          // mark deleted in cloud (set flag) so other devices see deletion
           await prodCol.doc(p.id).set({ deleted: true, lastUpdated: p.lastUpdated }, { merge:true });
-          uploaded++;
         } else {
-          // set full product document with lastUpdated
           await prodCol.doc(p.id).set(p, { merge:true });
-          uploaded++;
         }
       }
-
-      // upload sales (we don't delete sales)
-      let uploadedSales = 0;
       for(const s of sales){
         await salesCol.doc(s.id).set(s, { merge:true });
-        uploadedSales++;
       }
 
-      // after upload, remove locally any products that were deleted (as requested)
-      const beforeCount = products.length;
+      // remove local deleted items
       products = products.filter(p => !p.deleted);
       saveLS(LS_PRODUCTS(currentUID), products);
-
       markDirty(false);
-      alert(`Push complete. Products uploaded: ${uploaded} (sales: ${uploadedSales}). Local deleted items removed.`);
+      showBilingualAlert('push_complete');
     } catch(err){
       console.error(err);
-      alert('Push failed: ' + (err.message || err));
+      showBilingualAlert(err.message || translations.en['sync_failed']);
       markDirty(true);
     }
     refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
   };
 
-  // ---------- PULL (download cloud -> merge local, apply deletions) ----------
   pullBtn.onclick = async () => {
-    if(!navigator.onLine) return alert('No internet connection');
-    if(!currentUID) return alert('Not signed in');
-    if(!confirm('Pull from cloud? This will download new/updated products & sales from cloud and merge with local data.')) return;
+    if(!navigator.onLine) return showBilingualAlert('no_internet');
+    if(!currentUID) return showBilingualAlert('not_signed_in');
+    if(!showBilingualConfirm('pull_confirm')) return;
 
     const vendorRef = db.collection('vendors').doc(currentUID);
     const prodCol = vendorRef.collection('products');
     const salesCol = vendorRef.collection('sales');
 
     try{
-      // fetch cloud lists
       const cloudProdsSnap = await prodCol.get();
       const cloudSalesSnap = await salesCol.get();
       const cloudProds = cloudProdsSnap.docs.map(d => d.data());
@@ -445,11 +731,9 @@
 
       // MERGE PRODUCTS
       const map = {};
-      // seed with cloud
       for(const cp of cloudProds){
         map[cp.id] = { ...cp };
       }
-      // integrate local: prefer newer lastUpdated
       for(const lp of products){
         if(!lp.id){ lp.id = uid(); lp.lastUpdated = lp.lastUpdated || now(); }
         const existing = map[lp.id];
@@ -459,7 +743,6 @@
           const cloudLU = existing.lastUpdated || 0;
           const localLU = lp.lastUpdated || 0;
           if(localLU > cloudLU) map[lp.id] = { ...lp };
-          // else keep cloud
         }
       }
 
@@ -469,14 +752,13 @@
       for(const id in map){
         const item = map[id];
         if(item.deleted){
-          // if item marked deleted in cloud, remove locally and also schedule cloud delete
           toDeleteCloudIds.push(id);
         } else {
           finalProducts.push(item);
         }
       }
 
-      // MERGE SALES (no deletion for sales)
+      // MERGE SALES
       const salesMap = {};
       for(const cs of cloudSales) salesMap[cs.id] = { ...cs };
       for(const ls of sales){
@@ -491,48 +773,58 @@
       }
       const finalSales = Object.values(salesMap);
 
-      // Save merged locally
       // Normalize & save merged locally
-      for (const p of finalProducts) {
-        if (p.deleted === undefined) p.deleted = false;
-      }
+      for (const p of finalProducts) { if (p.deleted === undefined) p.deleted = false; }
       products = finalProducts.sort((a,b) => (a.name||'').localeCompare(b.name||''));
       sales = finalSales.sort((a,b)=> b.time - a.time);
       saveLS(LS_PRODUCTS(currentUID), products);
       saveLS(LS_SALES(currentUID), sales);
 
-      // Cleanup cloud docs that were marked deleted (so they don't reappear later)
+      // Cleanup cloud docs that were marked deleted
       for(const did of toDeleteCloudIds){
         await prodCol.doc(did).delete().catch(()=>{ /* ignore */ });
       }
 
       markDirty(false);
-      alert(`Pull complete. Products: ${products.length}, Sales: ${sales.length}`);
+      showBilingualAlert('pull_complete');
     } catch(err){
       console.error(err);
-      alert('Pull failed: ' + (err.message || err));
+      showBilingualAlert(err.message || translations.en['sync_failed']);
       markDirty(true);
     }
     refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
   };
 
-  // ---------- connectivity ----------
+  // ---------- connectivity UI ----------
   window.addEventListener('online', ()=> { syncStatusEl.textContent = dirty ? 'Pending 🟡' : 'Synced ✅'; });
   window.addEventListener('offline', ()=> { syncStatusEl.textContent = 'Offline 🔴'; });
 
-  syncStatusEl.textContent = navigator.onLine ? 'Manual sync' : 'Offline 🔴';
+  syncStatusEl.textContent = navigator.onLine ? translations[currentLang]['sync_manual'] + ' / ' + translations.hi['sync_manual'] : 'Offline 🔴';
 
-  // ---------- small safety: upgrade older local items without lastUpdated ----------
-  // run after login if needed (handled implicitly when merging)
+  // ---------- initial UI refresh & i18n ----------
+  applyTranslations(currentLang);
+  refreshProductsUI();
+  refreshCartUI();
+  refreshHistoryUI();
 
-
-  // Force UI refresh after initial load
-  setTimeout(() => {
+  // language toggle
+  document.getElementById('langToggle').addEventListener('click', ()=>{
+    const newLang = (currentLang === 'en') ? 'hi' : 'en';
+    applyTranslations(newLang);
     refreshProductsUI();
-    refreshCartUI();
     refreshHistoryUI();
-  }, 500);
+  });
 
+  // small safety: ensure lastUpdated on old local items (upgrade)
+  function upgradeLocalTimestamps(){
+    let changed = false;
+    products.forEach(p => { if(!p.lastUpdated){ p.lastUpdated = p._createdAt || now(); changed = true; }});
+    sales.forEach(s => { if(!s.lastUpdated){ s.lastUpdated = s._createdAt || now(); changed = true; }});
+    if(changed){ saveLS(LS_PRODUCTS(currentUID), products); saveLS(LS_SALES(currentUID), sales); markDirty(true); }
+  }
+
+  // ensure UI refresh once more shortly after load (fix timing)
+  setTimeout(()=>{ refreshProductsUI(); refreshCartUI(); refreshHistoryUI(); }, 600);
 
 })();
 </script>
