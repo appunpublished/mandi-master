@@ -3,12 +3,14 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Vendor POS — Bilingual + WhatsApp Billing</title>
+  <title>Vendor POS — Bilingual + WhatsApp + Shared Images + Discount</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase -->
+
+  <!-- Firebase compat libs -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
 
   <style>
     body { background:#f8fafc; font-family:Inter, system-ui, sans-serif; }
@@ -20,6 +22,12 @@
     #toast { position: fixed; left:50%; transform: translateX(-50%); bottom:24px; background:#111827; color:white; padding:10px 16px; border-radius:8px; display:none; z-index:2000; box-shadow:0 6px 18px rgba(0,0,0,0.12); }
     /* modal */
     .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:2000; }
+    .thumb { width:48px; height:48px; object-fit:cover; border-radius:6px; }
+    .big-image { max-width:100%; max-height:70vh; object-fit:contain; border-radius:8px; }
+    .sharedGrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:8px; }
+    .icon-btn { width:40px; height:40px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; background:#eef2ff; cursor:pointer; }
+    .currency { font-weight:700; }
+    .discount-box input, .discount-box select { padding:10px; border-radius:8px; }
   </style>
 </head>
 <body class="min-h-screen flex items-start justify-center p-4">
@@ -27,10 +35,54 @@
   <!-- TOAST -->
   <div id="toast"></div>
 
-  <!-- simple modal for bill preview -->
+  <!-- IMAGE MODALS -->
+  <div id="imageSelectModal" style="display:none;" class="modal-backdrop">
+    <div class="bg-white rounded-lg p-4 max-w-2xl w-full shadow overflow-auto" style="max-height:80vh;">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold" data-i18n="img_modal_title">Select or Upload Image</h3>
+        <div class="flex gap-2 items-center">
+          <!-- Refresh Icon-only button -->
+          <div id="refreshGalleryBtn" class="icon-btn" title="Refresh Gallery / गैलरी ताज़ा करें" aria-label="refresh">🔄</div>
+
+          <label class="big-btn bg-sky-500 text-white cursor-pointer">
+            📷 <span data-i18n="img_upload_button">Upload New</span>
+            <input id="imgUploadInput" type="file" accept="image/*" capture="environment" style="display:none" />
+          </label>
+          <button id="closeImageModal" class="big-btn bg-slate-200">Close</button>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <div class="font-semibold mb-1" data-i18n="img_suggested">Suggested images</div>
+        <div id="sharedImagesGrid" class="sharedGrid"></div>
+      </div>
+
+      <div class="mt-3">
+        <div class="font-semibold mb-1" data-i18n="img_preview_local">Selected preview (local)</div>
+        <div id="localImagePreviewArea" class="mt-2"></div>
+      </div>
+
+      <div class="flex gap-2 mt-4">
+        <button id="selectThisImageBtn" class="flex-1 big-btn bg-emerald-500 text-white" data-i18n="select_image">Select</button>
+        <button id="removeSelectedImageBtn" class="flex-1 big-btn bg-red-500 text-white" data-i18n="remove_image">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- full image preview modal -->
+  <div id="fullImageModal" style="display:none;" class="modal-backdrop">
+    <div class="bg-white rounded-lg p-4 max-w-3xl w-full shadow text-center">
+      <img id="fullImageView" class="big-image" src="" alt="Preview" />
+      <div class="mt-3">
+        <button id="closeFullImage" class="big-btn bg-slate-200">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BILL PREVIEW MODAL -->
   <div id="billModal" style="display:none;" class="modal-backdrop">
     <div class="bg-white rounded-lg p-4 max-w-md w-full shadow">
-      <h3 class="font-semibold mb-2">Bill / बिल</h3>
+      <h3 class="font-semibold mb-2" id="billModalTitle">Bill</h3>
       <pre id="billPreview" class="whitespace-pre-wrap text-sm bg-slate-50 p-2 rounded max-h-64 overflow-auto"></pre>
       <div class="flex gap-2 mt-3">
         <button id="copyBillBtn" class="flex-1 big-btn bg-emerald-500 text-white">📋 Copy</button>
@@ -90,6 +142,12 @@
             </select>
             <input id="p_qty" type="number" data-i18n-placeholder="ph_qty" placeholder="Qty (opt)" class="w-28 border rounded p-2" />
           </div>
+
+          <div class="flex items-center gap-2">
+            <button id="openImageSelector" class="big-btn bg-sky-500 text-white">📷 <span data-i18n="btn_image">Add / Select Image</span></button>
+            <div id="selectedThumbArea"></div>
+          </div>
+
           <div class="flex gap-2 mt-2">
             <button id="saveProduct" class="flex-1 big-btn bg-emerald-500 text-white" data-i18n="btn_save">Save</button>
             <button id="clearProduct" class="flex-1 big-btn bg-slate-200" data-i18n="btn_clear">Clear</button>
@@ -122,6 +180,17 @@
         <hr class="my-3" />
         <h4 class="font-semibold" data-i18n="heading_cart">Cart</h4>
         <div id="quickCart" class="space-y-2 max-h-56 overflow-auto"></div>
+
+        <!-- DISCOUNT (new) -->
+        <div class="discount-box mt-3 flex items-center gap-2">
+          <input id="discountValue" type="number" min="0" placeholder="Discount" class="flex-1 border rounded p-2" />
+          <select id="discountType" class="border rounded p-2 w-28">
+            <option value="₹">₹</option>
+            <option value="%">%</option>
+          </select>
+          <div id="grandTotalBox" class="text-right font-semibold mt-1 text-emerald-700 w-44"></div>
+        </div>
+
         <div class="mt-3">
           <button id="checkoutBtn" class="w-full big-btn bg-emerald-600 text-white" data-i18n="btn_checkout">Checkout</button>
         </div>
@@ -172,9 +241,15 @@
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
+  const storage = firebase.storage();
 
   // ---------- I18N DICTIONARY (EN / HI) ----------
   const translations = {
+    en: { /* will be assigned below */ },
+    hi: { /* will be assigned below */ }
+  };
+
+  Object.assign(translations, {
     en: {
       title_auth: "Vendor — Register / Login",
       ph_shop: "Shop name (for registration)",
@@ -215,7 +290,6 @@
       filter_yesterday: "Yesterday",
       filter_week: "This Week",
       filter_month: "This Month",
-      // alerts/prompts
       registered: "Registered. Now login.",
       enter_shop_email_pass: "Enter shop, email & password to register.",
       enter_email_pass: "Enter email & password",
@@ -231,7 +305,24 @@
       pull_complete: "Pull complete.",
       sync_failed: "Sync failed",
       bill_ready: "Bill ready to send",
-      bill_copied: "Bill copied to clipboard"
+      bill_copied: "Bill copied to clipboard",
+      img_modal_title: "Select or Upload Image",
+      img_upload_button: "Upload New",
+      img_suggested: "Suggested images",
+      img_preview_local: "Selected preview (local)",
+      select_image: "Select",
+      remove_image: "Remove",
+      btn_image: "Image",
+      img_upload_success: "Image uploaded",
+      img_selected: "Image selected",
+      gallery_no_images: "No shared images available",
+      discount: "Discount",
+      discount_type_rupee: "₹",
+      discount_type_percent: "%",
+      total_label: "Total",
+      grand_total_label: "Grand Total",
+      history_discount_label: "Discount",
+      history_final_label: "Final"
     },
     hi: {
       title_auth: "विक्रेता — पंजीकरण / लॉगिन",
@@ -273,7 +364,6 @@
       filter_yesterday: "कल",
       filter_week: "यह सप्ताह",
       filter_month: "यह महीना",
-      // alerts/prompts
       registered: "रजिस्टर हो गया। अब लॉगिन करें।",
       enter_shop_email_pass: "पंजीकरण के लिए दुकान, ईमेल और पासवर्ड दर्ज करें।",
       enter_email_pass: "ईमेल और पासवर्ड दर्ज करें",
@@ -289,9 +379,26 @@
       pull_complete: "पुल पूरा हुआ।",
       sync_failed: "सिंक विफल",
       bill_ready: "बिल भेजने के लिए तैयार है",
-      bill_copied: "बिल क्लिपबोर्ड पर कॉपी किया गया"
+      bill_copied: "बिल क्लिपबोर्ड पर कॉपी किया गया",
+      img_modal_title: "छवि चुनें या अपलोड करें",
+      img_upload_button: "नई अपलोड करें",
+      img_suggested: "सुझाई गई छवियाँ",
+      img_preview_local: "चयनित प्रीव्यू (लोकल)",
+      select_image: "चुनें",
+      remove_image: "हटाएं",
+      btn_image: "छवि",
+      img_upload_success: "छवि अपलोड हुई",
+      img_selected: "छवि चुनी गई",
+      gallery_no_images: "कोई साझा छवि नहीं",
+      discount: "छूट",
+      discount_type_rupee: "रु.",
+      discount_type_percent: "%",
+      total_label: "कुल",
+      grand_total_label: "कुल योग",
+      history_discount_label: "छूट",
+      history_final_label: "कुल"
     }
-  };
+  });
 
   // ---------- I18N HELPERS ----------
   function getSavedLang(){
@@ -330,6 +437,7 @@
   }
 
   function showBilingualAlert(keyOrText){
+    // general alerts show both languages (short)
     let enText = '', hiText = '';
     if(typeof keyOrText === 'string' && translations.en[keyOrText] && translations.hi[keyOrText]){
       enText = translations.en[keyOrText];
@@ -369,6 +477,7 @@
   const $ = id => document.getElementById(id);
   const LS_PRODUCTS = (uid) => `vendor_products_${uid}`;
   const LS_SALES = (uid) => `vendor_sales_${uid}`;
+  const LS_IMAGES = (uid) => `vendor_images_cache_${uid}`; // map: productId -> base64
   function loadLS(key){ try{ return JSON.parse(localStorage.getItem(key) || '[]'); } catch(e){ return []; } }
   function saveLS(key,val){ localStorage.setItem(key, JSON.stringify(val)); }
 
@@ -376,8 +485,8 @@
   let currentUser = null;
   let currentUID = null;
   let currentShop = null;
-  let products = []; // array of {id,name,price,qty,unit,lastUpdated,deleted?}
-  let sales = [];    // array of {id,time,timeStr,items:[{id,name,price,qty,unit}], lastUpdated}
+  let products = []; // array of {id,name,price,qty,unit,lastUpdated,deleted?, imageURL?, localImageBase64?}
+  let sales = [];    // array of {id,time,timeStr,items:[{id,name,price,qty,unit}], lastUpdated, discountType?, discountValue?, finalTotal?}
   let cart = [];
   let dirty = false;
 
@@ -401,11 +510,28 @@
   const sendBillArea = $('sendBillArea'), sendBillBtn = $('sendBillBtn'), custNumberEl = $('custNumber');
   const billModal = $('billModal'), billPreview = $('billPreview'), copyBillBtn = $('copyBillBtn'), closeBillBtn = $('closeBillBtn');
 
+  const imageSelectModal = $('imageSelectModal'), sharedImagesGrid = $('sharedImagesGrid'), imgUploadInput = $('imgUploadInput'), closeImageModal = $('closeImageModal');
+  const selectThisImageBtn = $('selectThisImageBtn'), removeSelectedImageBtn = $('removeSelectedImageBtn'), localImagePreviewArea = $('localImagePreviewArea'), selectedThumbArea = $('selectedThumbArea');
+  const refreshGalleryBtn = $('refreshGalleryBtn');
+
+  const fullImageModal = $('fullImageModal'), fullImageView = $('fullImageView'), closeFullImage = $('closeFullImage');
+
+  const discountValueEl = $('discountValue'), discountTypeEl = $('discountType'), grandTotalBox = $('grandTotalBox');
+
   // UTIL
   const now = () => Date.now();
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+  const uidGen = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function markDirty(v=true){ dirty = v; syncStatusEl.textContent = (!navigator.onLine) ? translations.en['no_internet'] + ' / ' + translations.hi['no_internet'] : (dirty ? translations.en['sync_manual'] + ' / ' + translations.hi['sync_manual'] : translations.en['sync_manual'] + ' / ' + translations.hi['sync_manual']); }
+
+  // ---------- HELPERS: currency based on language ----------
+  function getCurrencySymbol(){
+    return currentLang === 'hi' ? translations.hi['discount_type_rupee'] || 'रु.' : translations.en['discount_type_rupee'] || '₹';
+  }
+  function formatCurrency(val){
+    const sym = getCurrencySymbol();
+    return sym + ' ' + Number(val).toFixed(2);
+  }
 
   // ---------- AUTH ----------
   registerBtn.onclick = async () => {
@@ -441,11 +567,15 @@
       }catch(e){ currentShop = 'Shop'; }
       // load namespaced local data
       products = loadLS(LS_PRODUCTS(currentUID)); sales = loadLS(LS_SALES(currentUID));
+      // ensure local image cache map exists
+      const imgCache = JSON.parse(localStorage.getItem(LS_IMAGES(currentUID)) || "{}");
       appWrap.classList.remove('hidden'); authWrap.classList.add('hidden');
       shopNameEl.textContent = currentShop;
       vendorInfoEl.textContent = `${currentUser.email} • UID: ${currentUID}`;
       markDirty(true); // assume local changes until user Push/Pull
       refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
+      // preload shared images list for selector
+      await loadSharedImagesList();
     } else {
       currentUser = null; currentUID = null; currentShop = null;
       authWrap.classList.remove('hidden'); appWrap.classList.add('hidden');
@@ -463,25 +593,197 @@
   tabProducts.onclick=()=>show('products'); tabSales.onclick=()=>show('sales'); tabHistory.onclick=()=>show('history');
   show('products');
 
+  // ---------- IMAGE / SHARED IMAGES LOGIC ----------
+  let sharedImages = [];
+  let imageSelectorState = { selectedBase64: null, selectedSharedId: null, selectedSharedUrl: null };
+
+  function normalizeNameForFile(name){
+    return (name||'').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g,'').slice(0,80) || uidGen();
+  }
+
+  async function loadSharedImagesList(){
+    try{
+      const snap = await db.collection('shared_images').orderBy('timestamp','desc').limit(100).get();
+      sharedImages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderSharedImagesGrid();
+    }catch(e){
+      console.warn('Could not load shared images', e);
+    }
+  }
+
+  function renderSharedImagesGrid(){
+    sharedImagesGrid.innerHTML = '';
+    if(!sharedImages.length) {
+      sharedImagesGrid.innerHTML = '<div class="muted">'+(translations[currentLang]['gallery_no_images']||'No shared images available')+'</div>';
+      return;
+    }
+    for(const img of sharedImages){
+      const div = document.createElement('div');
+      div.className = 'border rounded p-2 text-center';
+      div.innerHTML = `<img src="${img.url}" class="thumb mb-2" /><div class="small muted">${escapeHtml(img.name)}</div><div class="small muted">by ${escapeHtml(img.uploaded_by || '—')}</div><div class="mt-2"><button class="selectShared big-btn bg-emerald-500 text-white">Select</button></div>`;
+      const btn = div.querySelector('.selectShared');
+      btn.onclick = ()=> {
+        imageSelectorState.selectedSharedId = img.id;
+        imageSelectorState.selectedSharedUrl = img.url;
+        imageSelectorState.selectedBase64 = null; // will fetch base64 on attach
+        renderLocalPreviewFromShared(img.url);
+      };
+      sharedImagesGrid.appendChild(div);
+    }
+  }
+
+  // open image selector modal
+  $('openImageSelector').addEventListener('click', async ()=>{
+    imageSelectorState = { selectedBase64: null, selectedSharedId: null, selectedSharedUrl: null };
+    localImagePreviewArea.innerHTML = '<div class="muted">No image selected</div>';
+    await loadSharedImagesList();
+    imageSelectModal.style.display = 'flex';
+  });
+
+  closeImageModal.onclick = ()=> { imageSelectModal.style.display = 'none'; };
+
+  refreshGalleryBtn.addEventListener('click', async () => {
+    if(!navigator.onLine){
+      showToast('no_internet');
+      return;
+    }
+    await loadSharedImagesList();
+    showToast('pull_complete');
+  });
+
+  imgUploadInput.addEventListener('change', async (ev)=>{
+    const f = ev.target.files && ev.target.files[0];
+    if(!f) return;
+    const base64 = await fileToCompressedBase64(f, 900 /* maxWidth */, 0.7 /* quality */);
+    imageSelectorState.selectedBase64 = base64;
+    imageSelectorState.selectedSharedId = null;
+    imageSelectorState.selectedSharedUrl = null;
+    renderLocalPreview();
+  });
+
+  function renderLocalPreview(){
+    localImagePreviewArea.innerHTML = '';
+    if(imageSelectorState.selectedBase64){
+      const img = document.createElement('img');
+      img.src = imageSelectorState.selectedBase64;
+      img.className = 'thumb';
+      img.onclick = ()=> openFullImage(imageSelectorState.selectedBase64);
+      localImagePreviewArea.appendChild(img);
+    } else {
+      localImagePreviewArea.innerHTML = '<div class="muted">No image selected</div>';
+    }
+  }
+
+  async function renderLocalPreviewFromShared(url){
+    localImagePreviewArea.innerHTML = '<div class="muted">Loading preview...</div>';
+    try{
+      const base64 = await fetchUrlToBase64(url);
+      imageSelectorState.selectedBase64 = base64;
+      imageSelectorState.selectedSharedUrl = url;
+      renderLocalPreview();
+    }catch(e){
+      localImagePreviewArea.innerHTML = '<div class="muted">Preview failed</div>';
+    }
+  }
+
+  selectThisImageBtn.onclick = ()=>{
+    if(!imageSelectorState.selectedBase64){
+      alert( (translations.en['img_selected'] || 'Image selected') + ' / ' + (translations.hi['img_selected'] || 'चित्र चुना गया') );
+      return;
+    }
+    selectedThumbArea.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = imageSelectorState.selectedBase64;
+    img.className = 'thumb';
+    img.onclick = ()=> openFullImage(imageSelectorState.selectedBase64);
+    selectedThumbArea.appendChild(img);
+    selectedThumbArea.dataset.base64 = imageSelectorState.selectedBase64;
+    selectedThumbArea.dataset.sharedUrl = imageSelectorState.selectedSharedUrl || '';
+    imageSelectModal.style.display = 'none';
+    showToast('img_selected');
+  };
+
+  removeSelectedImageBtn.onclick = ()=>{
+    selectedThumbArea.innerHTML = '';
+    delete selectedThumbArea.dataset.base64;
+    delete selectedThumbArea.dataset.sharedUrl;
+  };
+
+  function openFullImage(src){
+    fullImageView.src = src;
+    fullImageModal.style.display = 'flex';
+  }
+  closeFullImage.onclick = ()=> { fullImageModal.style.display = 'none'; fullImageView.src=''; };
+
+  async function fileToCompressedBase64(file, maxWidth = 900, quality = 0.7){
+    return new Promise((resolve, reject)=>{
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (e)=>{
+        img.onload = ()=>{
+          const scale = Math.min(1, maxWidth / img.width);
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl);
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function fetchUrlToBase64(url){
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return await blobToBase64(blob);
+  }
+  function blobToBase64(blob){
+    return new Promise((resolve, reject)=>{
+      const fr = new FileReader();
+      fr.onload = ()=> resolve(fr.result);
+      fr.onerror = reject;
+      fr.readAsDataURL(blob);
+    });
+  }
+
   // ---------- PRODUCTS CRUD (local) ----------
   let editProductId = null;
   saveProductBtn.onclick = () => {
     const name = p_name.value.trim(); if(!name) return showBilingualAlert('product_required');
     const price = Number(p_price.value) || 0; const qty = p_qty.value === '' ? '' : Number(p_qty.value); const unit = p_unit.value;
+    const selectedBase64 = selectedThumbArea.dataset.base64;
+    const selectedSharedUrl = selectedThumbArea.dataset.sharedUrl;
+
     if(editProductId){
       const i = products.findIndex(x => x.id === editProductId);
-      if(i>=0) products[i] = { ...products[i], name, price, qty, unit, lastUpdated: now(), deleted: false };
+      if(i>=0){
+        products[i] = { ...products[i], name, price, qty, unit, lastUpdated: now(), deleted: false };
+        if(selectedBase64) products[i].localImageBase64 = selectedBase64;
+        if(selectedSharedUrl && !products[i].imageURL) products[i].imageURL = selectedSharedUrl;
+      }
       editProductId = null;
     } else {
-      products.push({ id: uid(), name, price, qty, unit, lastUpdated: now() });
+      const newP = { id: uidGen(), name, price, qty, unit, lastUpdated: now() };
+      if(selectedBase64) newP.localImageBase64 = selectedBase64;
+      if(selectedSharedUrl) newP.imageURL = selectedSharedUrl;
+      products.push(newP);
     }
     saveLS(LS_PRODUCTS(currentUID), products);
+    selectedThumbArea.innerHTML = '';
+    delete selectedThumbArea.dataset.base64; delete selectedThumbArea.dataset.sharedUrl;
     markDirty(true);
     refreshProductsUI();
     p_name.value=''; p_price.value=''; p_qty.value='';
   };
 
-  clearProductBtn.onclick = ()=>{ editProductId=null; p_name.value=''; p_price.value=''; p_qty.value=''; };
+  clearProductBtn.onclick = ()=>{ editProductId=null; p_name.value=''; p_price.value=''; p_qty.value=''; selectedThumbArea.innerHTML=''; delete selectedThumbArea.dataset.base64; delete selectedThumbArea.dataset.sharedUrl; };
 
   function refreshProductsUI(){
     productList.innerHTML = '';
@@ -490,26 +792,31 @@
     active.forEach(p=>{
       const row = document.createElement('div');
       row.className = 'flex justify-between items-center border rounded p-2';
-      // show translated labels for edit/delete buttons
-      const editLabel = translations[currentLang]['btn_save'] || 'Edit';
-      const delLabel = translations[currentLang]['btn_clear'] || 'Del';
-      row.innerHTML = `<div><div class="font-semibold">${escapeHtml(p.name)}</div><div class="small muted">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty!=='' ? ' • ' + p.qty + ' ' + p.unit : ''}</div></div>
+      const thumbHtml = p.localImageBase64 ? `<img src="${p.localImageBase64}" class="thumb mr-3" />` : (p.imageURL ? `<img src="${p.imageURL}" class="thumb mr-3" />` : `<div class="thumb mr-3 bg-slate-100 flex items-center justify-center">📷</div>`);
+      row.innerHTML = `<div class="flex items-center"><div>${thumbHtml}</div><div><div class="font-semibold">${escapeHtml(p.name)}</div><div class="small muted">₹ ${Number(p.price).toFixed(2)} / ${p.unit} ${p.qty!=='' ? ' • ' + p.qty + ' ' + p.unit : ''}</div></div></div>
         <div class="flex gap-2">
-          <button class="bg-sky-500 text-white px-2 rounded edit">${escapeHtml(editLabel)}</button>
-          <button class="bg-red-500 text-white px-2 rounded del">${escapeHtml(delLabel)}</button>
+          <button class="bg-sky-500 text-white px-2 rounded edit">${escapeHtml(translations[currentLang]['btn_save'] || 'Edit')}</button>
+          <button class="bg-red-500 text-white px-2 rounded del">${escapeHtml(translations[currentLang]['btn_clear'] || 'Del')}</button>
         </div>`;
-      row.querySelector('.edit').onclick = ()=>{ editProductId = p.id; p_name.value = p.name; p_price.value = p.price; p_qty.value = p.qty; p_unit.value = p.unit; window.scrollTo({top:0,behavior:'smooth'}); };
+      row.querySelector('.edit').onclick = ()=>{ editProductId = p.id; p_name.value = p.name; p_price.value = p.price; p_qty.value = p.qty; p_unit.value = p.unit;
+        selectedThumbArea.innerHTML = '';
+        if(p.localImageBase64){ const im = document.createElement('img'); im.src = p.localImageBase64; im.className='thumb'; selectedThumbArea.appendChild(im); selectedThumbArea.dataset.base64 = p.localImageBase64; }
+        else if(p.imageURL){ const im = document.createElement('img'); im.src = p.imageURL; im.className='thumb'; selectedThumbArea.appendChild(im); selectedThumbArea.dataset.sharedUrl = p.imageURL; }
+        window.scrollTo({top:0,behavior:'smooth'});
+      };
       row.querySelector('.del').onclick = ()=>{ 
         if(!showBilingualConfirm('confirm_delete_product')) return;
         const idx = products.findIndex(x=>x.id===p.id);
         if(idx>=0){ products[idx].deleted = true; products[idx].lastUpdated = now(); saveLS(LS_PRODUCTS(currentUID), products); markDirty(true); refreshProductsUI(); showBilingualAlert('product_deleted_local'); }
       };
+      const imgEl = row.querySelector('img');
+      if(imgEl) imgEl.onclick = ()=> openFullImage(imgEl.src);
       productList.appendChild(row);
     });
     refreshSaleProducts();
   }
 
-  // ---------- SALES (local) ----------
+  // ---------- SALES ----------
   saleSearch.oninput = ()=> refreshSaleProducts(saleSearch.value);
   function refreshSaleProducts(filterTerm=''){
     const term = (filterTerm||'').trim().toLowerCase();
@@ -519,7 +826,12 @@
       const includes = list.filter(p => !p.name.toLowerCase().startsWith(term) && p.name.toLowerCase().includes(term));
       list = starts.concat(includes);
     }
-    sale_product.innerHTML = list.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ₹${Number(p.price).toFixed(2)}/${p.unit}</option>`).join('') || '<option value="">No match</option>';
+    sale_product.innerHTML = list.map(p => {
+      const thumb = p.localImageBase64 ? p.localImageBase64 : (p.imageURL || '');
+      const label = `${escapeHtml(p.name)} — ₹${Number(p.price).toFixed(2)}/${p.unit}`;
+      if(thumb) return `<option value="${p.id}" data-thumb="${thumb}">${label}</option>`;
+      return `<option value="${p.id}">${label}</option>`;
+    }).join('') || '<option value="">No match</option>';
     const sel = products.find(x => x.id === sale_product.value) || list[0];
     sale_unit_box.textContent = sel ? sel.unit : '—';
   }
@@ -532,6 +844,7 @@
     sale_qty.value=''; refreshCartUI();
   };
 
+  // recalc and show totals including discount
   function refreshCartUI(){
     quickCart.innerHTML = '';
     if(!cart.length) return quickCart.innerHTML = '<div class="muted">Cart empty</div>';
@@ -550,13 +863,56 @@
       quickCart.appendChild(div);
     });
     const total = cart.reduce((s,it)=> s + (it.qty * it.price), 0);
-    const foot = document.createElement('div'); foot.className='text-right font-semibold mt-2'; foot.textContent = 'Total ₹ ' + total.toFixed(2);
+
+    // read discount inputs
+    const discountVal = Number(discountValueEl.value) || 0;
+    const discountType = discountTypeEl.value || '₹';
+    let final = total;
+    if(discountVal > 0){
+      if(discountType === '%'){
+        final = total - (total * (discountVal/100));
+      } else {
+        final = total - discountVal;
+      }
+      if(final < 0) final = 0;
+    }
+
+    const foot = document.createElement('div'); foot.className = 'text-right font-semibold mt-2';
+    const totalLabel = translations[currentLang]['total_label'] || 'Total';
+    const grandLabel = translations[currentLang]['grand_total_label'] || 'Grand Total';
+    foot.innerHTML = `${totalLabel}: <span class="currency">${getCurrencySymbol()} ${total.toFixed(2)}</span><br>${grandLabel}: <span class="currency">${getCurrencySymbol()} ${final.toFixed(2)}</span>`;
     quickCart.appendChild(foot);
+
+    // also show in separate box near discount inputs
+    grandTotalBox.textContent = `${getCurrencySymbol()} ${final.toFixed(2)}`;
   }
+
+  // recalc whenever discount inputs change
+  discountValueEl.addEventListener('input', refreshCartUI);
+  discountTypeEl.addEventListener('change', refreshCartUI);
 
   checkoutBtn.onclick = ()=>{
     if(!cart.length) return showBilingualAlert('product_required');
-    const sale = { id: uid(), time: now(), timeStr: new Date().toLocaleString(), items: cart.map(x=>({...x})), lastUpdated: now() };
+    const total = cart.reduce((s,it)=> s + (it.qty * it.price), 0);
+    const discountVal = Number(discountValueEl.value) || 0;
+    const discountType = discountTypeEl.value || '₹';
+    let final = total;
+    if(discountVal > 0){
+      if(discountType === '%') final = total - (total * (discountVal/100));
+      else final = total - discountVal;
+      if(final < 0) final = 0;
+    }
+    const sale = {
+      id: uidGen(),
+      time: now(),
+      timeStr: new Date().toLocaleString(),
+      items: cart.map(x=>({...x})),
+      discountType: discountType,
+      discountValue: discountVal,
+      total: total,
+      finalTotal: final,
+      lastUpdated: now()
+    };
     sales.push(sale);
     saveLS(LS_SALES(currentUID), sales);
     // deduct stock if provided
@@ -571,54 +927,80 @@
     // show send bill area
     sendBillArea.style.display = 'block';
     showToast('bill_ready');
+
+    // clear discount inputs for next sale (optional)
+    discountValueEl.value = '';
+    discountTypeEl.value = '₹';
+    grandTotalBox.textContent = '';
   };
 
-  // ---------- prepare bilingual bill text ----------
-  function buildBilingualBill(sale){
-    // sale: a sale object as saved; include shop name and footer
-    const shop = currentShop || 'Shop';
+  // ---------- prepare SINGLE-LANGUAGE bill text (based on currentLang) ----------
+  function buildSingleLanguageBill(sale){
+    // choose language
+    const isHi = (currentLang === 'hi');
+    const curSym = getCurrencySymbol();
+    const shop = currentShop || (isHi ? 'दुकान' : 'Shop');
     const dt = new Date(sale.time);
     const dtStr = dt.toLocaleString();
     const lines = [];
-    lines.push(`🧾 ${shop} / दुकान: ${shop}`);
-    lines.push(`Date / दिनांक: ${dtStr}`);
-    lines.push(`-----------------------------`);
-    sale.items.forEach(it=>{
-      const enLine = `${it.name} — ${it.qty} ${it.unit} × ₹${Number(it.price)} = ₹${(it.qty * it.price).toFixed(2)}`;
-      // try to find Hindi name fallback same as en (we don't have translations for product names)
-      const hiLine = `${it.name} — ${it.qty} ${it.unit} × ₹${Number(it.price)} = ₹${(it.qty * it.price).toFixed(2)}`;
-      lines.push(`${enLine} / ${hiLine}`);
-    });
-    lines.push(`-----------------------------`);
-    const total = sale.items.reduce((s,it)=> s + (it.qty * it.price), 0);
-    lines.push(`Total / कुल: ₹${total.toFixed(2)}`);
-    lines.push(``);
-    lines.push(`Thank you! / धन्यवाद 🙏`);
-    lines.push(`Bill generated using Vendor POS App / बिल Vendor POS App से बनाया गया 📱`);
+    if(isHi){
+      lines.push(`🧾 ${shop}`);
+      lines.push(`दिनांक: ${dtStr}`);
+      lines.push(`-----------------------------`);
+      sale.items.forEach(it=>{
+        lines.push(`${it.name} — ${it.qty} ${it.unit} × ${curSym} ${Number(it.price).toFixed(2)} = ${curSym} ${(it.qty * it.price).toFixed(2)}`);
+      });
+      lines.push(`-----------------------------`);
+      lines.push(`${translations.hi['total_label'] || 'कुल'}: ${curSym} ${Number(sale.total).toFixed(2)}`);
+      if(sale.discountValue && sale.discountValue > 0){
+        const dLab = translations.hi['history_discount_label'] || 'छूट';
+        if(sale.discountType === '%') lines.push(`${dLab}: ${sale.discountValue}%`);
+        else lines.push(`${dLab}: ${curSym} ${Number(sale.discountValue).toFixed(2)}`);
+      }
+      lines.push(`${translations.hi['grand_total_label'] || 'कुल योग'}: ${curSym} ${Number(sale.finalTotal).toFixed(2)}`);
+      lines.push('');
+      lines.push(`धन्यवाद 🙏`);
+      lines.push(`बिल ${'Vendor POS'} ऐप से बनाया गया`);
+    } else {
+      lines.push(`🧾 ${shop}`);
+      lines.push(`Date: ${dtStr}`);
+      lines.push(`-----------------------------`);
+      sale.items.forEach(it=>{
+        lines.push(`${it.name} — ${it.qty} ${it.unit} × ${curSym} ${Number(it.price).toFixed(2)} = ${curSym} ${(it.qty * it.price).toFixed(2)}`);
+      });
+      lines.push(`-----------------------------`);
+      lines.push(`${translations.en['total_label'] || 'Total'}: ${curSym} ${Number(sale.total).toFixed(2)}`);
+      if(sale.discountValue && sale.discountValue > 0){
+        const dLab = translations.en['history_discount_label'] || 'Discount';
+        if(sale.discountType === '%') lines.push(`${dLab}: ${sale.discountValue}%`);
+        else lines.push(`${dLab}: ${curSym} ${Number(sale.discountValue).toFixed(2)}`);
+      }
+      lines.push(`${translations.en['grand_total_label'] || 'Grand Total'}: ${curSym} ${Number(sale.finalTotal).toFixed(2)}`);
+      lines.push('');
+      lines.push(`Thank you! 🙏`);
+      lines.push(`Bill generated using Vendor POS App`);
+    }
     return lines.join('\n');
   }
 
   // ---------- Send Bill logic ----------
   sendBillBtn.onclick = () => {
-    // use the most recent sale
     if(!sales.length) return showBilingualAlert('product_required');
     const sale = sales[sales.length - 1];
-    const text = buildBilingualBill(sale);
+    const text = buildSingleLanguageBill(sale); // single language bill
     const rawNumber = (custNumberEl.value || '').trim();
     if(rawNumber){
-      // normalize number: remove non-digits
       let digits = rawNumber.replace(/\D/g,'');
-      // if 10-digit assume India -> prefix 91
       if(digits.length === 10) digits = '91' + digits;
-      // if starts with 0, remove leading zeros then handle
       if(digits.startsWith('0')) digits = digits.replace(/^0+/, '');
       const encoded = encodeURIComponent(text);
       const waUrl = `https://wa.me/${digits}?text=${encoded}`;
-      // open in new tab/window - mobile will open app
       window.open(waUrl, '_blank');
       showToast('bill_ready');
     } else {
-      // show modal with bill & copy option
+      // set modal title based on language
+      const isHi = currentLang === 'hi';
+      document.getElementById('billModalTitle').textContent = isHi ? 'बिल' : 'Bill';
       billPreview.textContent = text;
       billModal.style.display = 'flex';
     }
@@ -629,7 +1011,6 @@
       await navigator.clipboard.writeText(billPreview.textContent);
       showToast('bill_copied');
     }catch(e){
-      // fallback select & execCommand
       const ta = document.createElement('textarea'); ta.value = billPreview.textContent; document.body.appendChild(ta); ta.select();
       try { document.execCommand('copy'); showToast('bill_copied'); } catch(e2){ alert('Copy failed'); }
       ta.remove();
@@ -641,7 +1022,6 @@
   function refreshHistoryUI(){
     historyList.innerHTML = '';
 
-    // filter by date
     const filter = historyFilter.value || 'all';
     const isSameDay = (d1, d2) => new Date(d1).toDateString() === new Date(d2).toDateString();
     const startOfWeek = (d) => { const dt = new Date(d); const day = dt.getDay(); dt.setDate(dt.getDate() - day); dt.setHours(0,0,0,0); return dt; };
@@ -655,29 +1035,35 @@
       if(filter === 'yesterday'){ const y = new Date(); y.setDate(y.getDate() -1); return isSameDay(t, y); }
       if(filter === 'week'){ return t >= startOfWeek(today); }
       if(filter === 'month'){ return t >= startOfMonth(today); }
-      return true; // all
+      return true;
     });
 
     if(!filteredSales.length) { historyList.innerHTML = '<div class="muted">No sales for selected period</div>'; return; }
 
-    // Grand total for filtered sales
-    const grandTotal = filteredSales.reduce((sum, s) => sum + s.items.reduce((st, it) => st + it.qty * it.price, 0), 0);
+    const grandTotal = filteredSales.reduce((sum, s) => sum + Number(s.finalTotal || s.total || 0), 0);
     const summaryDiv = document.createElement('div');
     summaryDiv.className = 'p-2 mb-2 rounded bg-emerald-100 text-emerald-800 font-semibold flex justify-between';
-    summaryDiv.innerHTML = `<span>${translations[currentLang]['heading_history'] || 'Grand Total (filtered)'}</span><span>₹ ${grandTotal.toFixed(2)}</span>`;
+    summaryDiv.innerHTML = `<span>${translations[currentLang]['heading_history'] || 'Grand Total (filtered)'}</span><span>${getCurrencySymbol()} ${grandTotal.toFixed(2)}</span>`;
     historyList.appendChild(summaryDiv);
 
     filteredSales.slice().reverse().forEach(s=>{
       const d = document.createElement('div'); d.className='border rounded p-2 bg-white mb-2';
-      const itemsHtml = s.items.map(it => `<div>${escapeHtml(it.name)} • ${it.qty}${it.unit} — ₹ ${(it.qty*it.price).toFixed(2)}</div>`).join('');
+      const itemsHtml = s.items.map(it => `<div>${escapeHtml(it.name)} • ${it.qty}${it.unit} — ${getCurrencySymbol()} ${(it.qty*it.price).toFixed(2)}</div>`).join('');
       const total = s.items.reduce((sum,it)=> sum + it.qty * it.price, 0);
-      d.innerHTML = `<div class="small muted">${new Date(s.time).toLocaleString()}</div>${itemsHtml}<div class="mt-2 text-right font-semibold border-t pt-1">Total: ₹ ${total.toFixed(2)}</div>`;
+      let discHtml = '';
+      if(s.discountValue && s.discountValue > 0){
+        const dLabel = translations[currentLang]['history_discount_label'] || 'Discount';
+        if(s.discountType === '%') discHtml = `<div class="muted small">${dLabel}: ${s.discountValue}%</div>`;
+        else discHtml = `<div class="muted small">${dLabel}: ${getCurrencySymbol()} ${Number(s.discountValue).toFixed(2)}</div>`;
+      }
+      const final = Number(s.finalTotal != null ? s.finalTotal : total);
+      d.innerHTML = `<div class="small muted">${new Date(s.time).toLocaleString()}</div>${itemsHtml}${discHtml}<div class="mt-2 text-right font-semibold border-t pt-1">${translations[currentLang]['history_final_label'] || 'Final'}: ${getCurrencySymbol()} ${final.toFixed(2)}</div>`;
       historyList.appendChild(d);
     });
   }
   historyFilter.onchange = () => refreshHistoryUI();
 
-  // ---------- PUSH / PULL (merge) ----------
+  // ---------- PUSH (upload local -> cloud, includes image upload) ----------
   pushBtn.onclick = async () => {
     if(!navigator.onLine) return showBilingualAlert('no_internet');
     if(!currentUID) return showBilingualAlert('not_signed_in');
@@ -688,8 +1074,49 @@
     const salesCol = vendorRef.collection('sales');
 
     try{
+      // ensure vendor profile
       await vendorRef.set({ shopName: currentShop || '', email: currentUser.email }, { merge: true });
 
+      // upload images first: for each product that has localImageBase64 and no imageURL -> upload
+      for(const p of products){
+        if(p.localImageBase64 && !p.imageURL){
+          try{
+            // create filename using normalized name + uid + timestamp
+            const fname = normalizeNameForFile(p.name) + '_' + currentUID + '_' + Math.floor(Date.now()/1000) + '.jpg';
+            const refPath = `shared_images/${fname}`;
+            const storageRef = storage.ref().child(refPath);
+            // convert base64 to blob
+            const blob = base64ToBlob(p.localImageBase64);
+            await storageRef.put(blob);
+            const url = await storageRef.getDownloadURL();
+            p.imageURL = url;
+            // add doc to shared_images collection with normalized doc id
+            const docId = normalizeNameForFile(p.name) + '_' + Math.floor(Date.now()/1000) + '_' + currentUID;
+            const docData = {
+              name: p.name,
+              url: url,
+              uploaded_by: currentUID,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+              filename: fname
+            };
+            await db.collection('shared_images').doc(docId).set(docData, { merge:true });
+
+            // --- INSTANT REFRESH: add the newly uploaded image to local sharedImages and render ---
+            try {
+              const localEntry = { id: docId, name: p.name, url: url, uploaded_by: currentUID, timestamp: Date.now(), filename: fname };
+              sharedImages.unshift(localEntry);
+              renderSharedImagesGrid();
+            } catch(e) {
+              console.warn('Could not instant-refresh sharedImages array', e);
+            }
+            showToast('img_upload_success');
+          }catch(e){
+            console.warn('Image upload failed for', p.name, e);
+          }
+        }
+      }
+
+      // upload products (create or update)
       for(const p of products){
         if(p.deleted){
           await prodCol.doc(p.id).set({ deleted: true, lastUpdated: p.lastUpdated }, { merge:true });
@@ -697,15 +1124,19 @@
           await prodCol.doc(p.id).set(p, { merge:true });
         }
       }
+      // upload sales
       for(const s of sales){
         await salesCol.doc(s.id).set(s, { merge:true });
       }
 
-      // remove local deleted items
+      // after upload, remove locally any products that were deleted
       products = products.filter(p => !p.deleted);
       saveLS(LS_PRODUCTS(currentUID), products);
+
       markDirty(false);
       showBilingualAlert('push_complete');
+      // refresh shared images list for other devices
+      await loadSharedImagesList();
     } catch(err){
       console.error(err);
       showBilingualAlert(err.message || translations.en['sync_failed']);
@@ -714,6 +1145,14 @@
     refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
   };
 
+  function base64ToBlob(dataurl) {
+    const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    for(let i=0;i<n;i++) u8arr[i]=bstr.charCodeAt(i);
+    return new Blob([u8arr], {type:mime});
+  }
+
+  // ---------- PULL (download cloud -> merge local, apply deletions) ----------
   pullBtn.onclick = async () => {
     if(!navigator.onLine) return showBilingualAlert('no_internet');
     if(!currentUID) return showBilingualAlert('not_signed_in');
@@ -735,7 +1174,7 @@
         map[cp.id] = { ...cp };
       }
       for(const lp of products){
-        if(!lp.id){ lp.id = uid(); lp.lastUpdated = lp.lastUpdated || now(); }
+        if(!lp.id){ lp.id = uidGen(); lp.lastUpdated = lp.lastUpdated || now(); }
         const existing = map[lp.id];
         if(!existing) {
           map[lp.id] = { ...lp };
@@ -762,7 +1201,7 @@
       const salesMap = {};
       for(const cs of cloudSales) salesMap[cs.id] = { ...cs };
       for(const ls of sales){
-        if(!ls.id){ ls.id = uid(); ls.lastUpdated = ls.lastUpdated || now(); }
+        if(!ls.id){ ls.id = uidGen(); ls.lastUpdated = ls.lastUpdated || now(); }
         const existing = salesMap[ls.id];
         if(!existing) salesMap[ls.id] = { ...ls };
         else {
@@ -787,6 +1226,9 @@
 
       markDirty(false);
       showBilingualAlert('pull_complete');
+      // refresh shared images list and cache newly discovered imageURLs to local base64 (async)
+      await loadSharedImagesList();
+      cacheRemoteImagesLocally(); // don't await
     } catch(err){
       console.error(err);
       showBilingualAlert(err.message || translations.en['sync_failed']);
@@ -794,6 +1236,22 @@
     }
     refreshProductsUI(); refreshCartUI(); refreshHistoryUI();
   };
+
+  // cache remote imageURLs to localImageBase64 if not already cached for offline use
+  async function cacheRemoteImagesLocally(){
+    for(const p of products){
+      if(!p.localImageBase64 && p.imageURL){
+        try{
+          const base64 = await fetchUrlToBase64(p.imageURL);
+          p.localImageBase64 = base64;
+          // save immediately to LS for offline
+          saveLS(LS_PRODUCTS(currentUID), products);
+        }catch(e){
+          // ignore failures
+        }
+      }
+    }
+  }
 
   // ---------- connectivity UI ----------
   window.addEventListener('online', ()=> { syncStatusEl.textContent = dirty ? 'Pending 🟡' : 'Synced ✅'; });
@@ -807,12 +1265,13 @@
   refreshCartUI();
   refreshHistoryUI();
 
-  // language toggle
+  // language toggle (switch UI language; bill uses single selected language)
   document.getElementById('langToggle').addEventListener('click', ()=>{
     const newLang = (currentLang === 'en') ? 'hi' : 'en';
     applyTranslations(newLang);
     refreshProductsUI();
     refreshHistoryUI();
+    refreshCartUI();
   });
 
   // small safety: ensure lastUpdated on old local items (upgrade)
