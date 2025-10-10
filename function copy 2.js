@@ -1106,21 +1106,19 @@
   syncStatusEl.textContent = navigator.onLine ? translations[currentLang]['sync_manual'] + ' / ' + translations.hi['sync_manual'] : 'Offline 🔴';
 
   
-  
   // ---------- BILINGUAL VOICE INPUT (EN/HI) ----------
   // Adds voice input for Product add (productVoiceBtn) and Sales add-to-cart (saleVoiceBtn).
   (function(){
 
     // small helper: map common Hindi words to numbers
     const hindiNumbersMap = {
-      'एक':1, 'दो':2, 'तीन':3, 'चार':4, 'पाँच':5, 'पांच':5, 'छह':6, 'सात':7, 'आठ':8, 'नौ':9, 'दस':10,
-      'पंद्रह':15, 'बीस':20, 'पच्चीस':25, 'तीस':30, 'पचास':50,
-      'आधा':0.5, 'पौना':0.75, 'सवा':1.25, 'डेढ़':1.5, 'डेढ':1.5, 'ढाई':2.5, 'साढ़े':0.5
+      'एक':1,'दो':2,'तीन':3,'चार':4,'पाँच':5,'पाच':5,'छह':6,'सात':7,'आठ':8,'नौ':9,'दस':10,
+      'आधा':0.5,'पौना':0.75,'सवा':1.25,'डेढ़':1.5,'डेढ':1.5,'ढाई':2.5,'साढ़े':0.5,'आधा':0.5
     };
     // english words too
-    const englishNumbersMap = {'half':0.5, 'quarter':0.25, 'one':1, 'two':2, 'three':3, 'four':4, 'five':5, 'ten':10, 'fifteen':15, 'twenty':20 };
+    const englishNumbersMap = {'half':0.5,'quarter':0.25,'one':1,'two':2,'three':3,'four':4,'five':5};
 
-    function replaceWordsWithDigits(text){
+    function replaceHindiWordsWithDigits(text){
       for(const w in hindiNumbersMap){
         const re = new RegExp('\\b'+w+'\\b','g');
         text = text.replace(re, String(hindiNumbersMap[w]));
@@ -1132,75 +1130,57 @@
       return text;
     }
 
-    // ⭐ NEW: Advanced parser for adding products
-    function parseProductCommand(text) {
-        text = replaceWordsWithDigits(text.toLowerCase());
-
-        const unitRegex = '(?:kilo|kg|gram|g|piece|dozen|दर्जन|पीस|किलो|ग्राम)';
-        const currencyRegex = '(?:rupee|rs|₹|रुपये)';
-
-        // Pattern 1: Captures "potato 20 rupee kilo total 15 kilo"
-        const fullPattern = new RegExp(`(?<name>.+?)\\s+(?<price>\\d+(\\.\\d+)?)\\s+${currencyRegex}\\s+(?<unit>${unitRegex})\\s+(?:total|stock|कुल)?\\s*(?<qty>\\d+(\\.\\d+)?)`, 'i');
-
-        // Pattern 2: Captures "potato 20 rupee kilo" (without total quantity)
-        const pricePattern = new RegExp(`(?<name>.+?)\\s+(?<price>\\d+(\\.\\d+)?)\\s+${currencyRegex}\\s+(?<unit>${unitRegex})`, 'i');
-        
-        let match = fullPattern.exec(text);
-        if (match && match.groups) {
-            return {
-                name: match.groups.name.trim(),
-                price: parseFloat(match.groups.price),
-                unit: (match.groups.unit || '').replace('kilo', 'kg').replace('gram', 'g'),
-                qty: parseFloat(match.groups.qty)
-            };
-        }
-
-        match = pricePattern.exec(text);
-        if (match && match.groups) {
-            return {
-                name: match.groups.name.trim(),
-                price: parseFloat(match.groups.price),
-                unit: (match.groups.unit || '').replace('kilo', 'kg').replace('gram', 'g'),
-                qty: '' // No quantity specified
-            };
-        }
-
-        // Fallback to old parser for quantity only, e.g., "potato 1.5 kilo"
-        const oldParsed = parseWeightCommand(text);
-        if (oldParsed.product) {
-            const totalKg = (Number(oldParsed.kilos || 0) + Number(oldParsed.grams || 0) / 1000);
-            return { name: oldParsed.product, qty: totalKg > 0 ? totalKg : '', unit: oldParsed.unit };
-        }
-
-        return { name: text }; // Default if no pattern matches
-    }
-    
-    // Original parser, now used as a fallback and for sales
+    // parser: accepts strings like "potato 1 kilo 230 gram" or Hindi "आलू एक किलो दो सौ ग्राम" or "500 gram tomato"
     function parseWeightCommand(text){
       text = text.toLowerCase();
-      text = replaceWordsWithDigits(text);
+      text = replaceHindiWordsWithDigits(text);
 
+      // normalize words
       text = text.replace(/किलो/g, ' kilo ').replace(/किलोग्राम/g,' kilo ').replace(/ग्राम/g,' gram ').replace(/kgs?/g,' kilo ').replace(/grams?/g,' gram ');
+      // remove extra spaces
       text = text.replace(/\s+/g,' ').trim();
 
-      let product = '', kilos = 0, grams = 0;
-      
-      let m = text.match(/([\u0900-\u097F\w\s]+?)\s+(\d+(?:\.\d+)?)\s*kilo(?:\s+(\d+(?:\.\d+)?)\s*gram)?/i);
-      if(m){ product = m[1].trim(); kilos = parseFloat(m[2])||0; grams = parseFloat(m[3])||0; return {product, kilos, grams, unit: 'kg'}; }
-      
-      m = text.match(/(\d+(?:\.\d+)?)\s*gram\s+([\u0900-\u097F\w\s]+)/i);
-      if(m){ grams = parseFloat(m[1])||0; product = m[2].trim(); return {product, kilos, grams, unit: 'g'}; }
-      
-      m = text.match(/([\u0900-\u097F\w\s]+?)\s+(\d+(?:\.\d+)?)\s*gram/i);
-      if(m){ product = m[1].trim(); grams = parseFloat(m[2])||0; return {product, kilos, grams, unit: 'g'}; }
-      
-      m = text.match(/([\u0900-\u097F\w\s]+?)\s+(\d+(?:\.\d+)?)/i);
-      if(m){ product = m[1].trim(); kilos = parseFloat(m[2])||0; return {product, kilos, grams, unit: 'kg'}; }
+      // pattern: name kilos grams
+      let product = '';
+      let kilos = 0, grams = 0;
 
+      // attempt common pattern: "<name> <num> kilo <num> gram"
+      let m = text.match(/([\u0900-\u097F\w\s]+?)\s+(\d+(?:\.\d+)?)\s*kilo(?:\s+(\d+(?:\.\d+)?)\s*gram)?/i);
+      if(m){
+        product = m[1].trim();
+        kilos = parseFloat(m[2])||0;
+        grams = parseFloat(m[3])||0;
+        return {product, kilos, grams};
+      }
+      // pattern: "<num> gram <name>" or "<name> <num> gram"
+      m = text.match(/(\d+(?:\.\d+)?)\s*gram\s+([\u0900-\u097F\w\s]+)/i);
+      if(m){
+        grams = parseFloat(m[1])||0;
+        product = m[2].trim();
+        return {product, kilos, grams};
+      }
+      m = text.match(/([\u0900-\u097F\w\s]+?)\s+(\d+(?:\.\d+)?)\s*gram/i);
+      if(m){
+        product = m[1].trim();
+        grams = parseFloat(m[2])||0;
+        return {product, kilos, grams};
+      }
+      // pattern: "<name> <num>" assume unitless number - attach to unit kg if product likely weight-based
+      m = text.match(/([\u0900-\u097F\w\s]+?)\s+(\d+(?:\.\d+)?)/i);
+      if(m){
+        product = m[1].trim();
+        kilos = parseFloat(m[2])||0;
+        return {product, kilos, grams};
+      }
+      // fallback: entire text as product
       let unit = 'kg';
-      if (text.includes('piece') || text.includes('पीस')) unit = 'piece';
-      else if (text.includes('dozen') || text.includes('दर्जन')) unit = 'dozen';
-      return { product: text, unit };
+if (text.includes('piece') || text.includes('पीस')) unit = 'piece';
+else if (text.includes('dozen') || text.includes('दर्जन')) unit = 'dozen';
+else if (text.includes('kilo') || text.includes('किलो')) unit = 'kg';
+else if (text.includes('gram') || text.includes('ग्राम')) unit = 'g';
+
+return { product, kilos, grams, unit };
+
     }
 
     // Setup SpeechRecognition instance (reused)
@@ -1217,6 +1197,7 @@
         alert('SpeechRecognition not supported in this browser.');
         return;
       }
+      // set language based on UI language preference if available
       try{
         recognizer.lang = (currentLang === 'hi') ? 'hi-IN' : 'en-IN';
       }catch(e){ recognizer.lang = 'en-IN'; }
@@ -1226,44 +1207,60 @@
 
       recognizer.onresult = function(evt){
         const spoken = evt.results[0][0].transcript.trim();
-        voiceStatusLocal('Heard: "'+spoken+'"');
-        
+        voiceStatusLocal('Heard: \"'+spoken+'\"');
+        const parsed = parseWeightCommand(spoken);
+        // decide action based on context
         if(context === 'product'){
-          // ⭐ MODIFIED: Use the new advanced parser
-          const parsed = parseProductCommand(spoken);
-          
-          if(parsed.name) p_name.value = parsed.name;
-          if(parsed.price) p_price.value = parsed.price;
-          if(parsed.unit) p_unit.value = parsed.unit;
-          if(parsed.qty) p_qty.value = parsed.qty;
-          
-          showToast('Product details filled from voice. Please verify and save.');
+          // pre-fill product add form: name, qty and unit (kg)
+          p_name.value = parsed.product || '';
+          // convert kilos+grams to unit used in product form: prefer kg
+          const totalKg = (Number(parsed.kilos||0) + Number(parsed.grams||0)/1000);
+          if(totalKg > 0){
+            p_unit.value = 'kg';
+            // set p_qty to 1.230 style number for qty field (many products use qty as stock not default sale amount) - set p_qty as totalKg
+            p_qty.value = totalKg;
+          }
+          // optionally auto-save if price mentioned like "price 40" - detect
+          const priceMatch = spoken.match(/price\s*(\d+(?:\.\d+)?)/i);
+          if(priceMatch && priceMatch[1]) p_price.value = priceMatch[1];
+          showToast('Filled product name & qty from voice. Verify price and click Save.');
+          // focus price input to encourage filling price
           p_price.focus();
-
         } else if(context === 'sale'){
-          // Sales logic remains the same, using the weight parser
-          const parsed = parseWeightCommand(spoken);
+          // try to match product by name (search in products array)
           const prodName = (parsed.product || '').toLowerCase();
           let matched = products.find(p => (p.name||'').toLowerCase() === prodName);
           if(!matched){
+            // try includes
             matched = products.find(p => (p.name||'').toLowerCase().includes(prodName));
           }
           const totalKg = (Number(parsed.kilos||0) + Number(parsed.grams||0)/1000);
           if(matched){
-            let qtyToAdd = totalKg > 0 ? totalKg : 1;
-            if(matched.unit === 'g') qtyToAdd = Math.round(totalKg * 1000);
-            else if(matched.unit === 'kg') qtyToAdd = Number(totalKg.toFixed(3));
-            
+            // determine quantity units: if product unit is 'g' or 'kg' or 'piece'
+            let qtyToAdd = totalKg;
+            if(matched.unit === 'g'){
+              // convert kg to grams
+              qtyToAdd = Math.round(totalKg * 1000);
+            } else if(matched.unit === 'kg'){
+              // leave as kg (possibly decimals)
+              qtyToAdd = Number(totalKg.toFixed(3));
+            } else {
+              // if unit is piece/dozen and parsed weight exists, set qty to 1 as fallback
+              qtyToAdd = (totalKg > 0) ? totalKg : 1;
+            }
+            // add to cart using existing structure (id, name, price, qty, unit)
             const existing = cart.find(x=>x.id===matched.id && x.unit===matched.unit);
             if(existing) existing.qty = Number(existing.qty) + qtyToAdd;
-            else cart.push({ id: matched.id, name: matched.name, price: matched.price, qty: qtyToAdd, unit: matched.unit, baseUnitCount: matched.baseUnitCount });
+            else cart.push({ id: matched.id, name: matched.name, price: matched.price, qty: qtyToAdd, unit: matched.unit });
             refreshCartUI();
             showToast('Added to cart: ' + matched.name + ' (' + qtyToAdd + ' ' + matched.unit + ')');
           } else {
+            // no product found — offer to prefill product add form with this name & suggest saving
             p_name.value = parsed.product || '';
             p_unit.value = 'kg';
             p_qty.value = (totalKg > 0) ? totalKg : '';
-            showToast('Product not found. Prefilled add-product form — please Save it.');
+            showToast('Product not found. Prefilled add-product form — please Save to create new product.');
+            // switch to product tab and scroll to top so seller can save the new product
             show('products');
             window.scrollTo({top:0, behavior:'smooth'});
           }
@@ -1279,14 +1276,17 @@
       };
     }
 
+    // small UI helpers to show status in existing UI — we'll reuse syncStatusEl for a short-lived message
     let voiceStatusTimeout = null;
     function voiceStatusLocal(msg){
+      // show temporary message near syncStatus or create a small transient toast
       const prev = syncStatusEl.textContent;
       syncStatusEl.textContent = msg;
       clearTimeout(voiceStatusTimeout);
       voiceStatusTimeout = setTimeout(()=>{ syncStatusEl.textContent = prev; }, 3500);
     }
 
+    // attach buttons
     const prodVoiceBtn = document.getElementById('productVoiceBtn');
     const saleVoiceBtn = document.getElementById('saleVoiceBtn');
     if(prodVoiceBtn){ prodVoiceBtn.addEventListener('click', ()=> startRecognition('product')); }
@@ -1294,6 +1294,7 @@
 
   })();
   // ---------- END BILINGUAL VOICE INPUT ----------
+
 
   // ---------- initial UI refresh & i18n ----------
   applyTranslations(currentLang);
