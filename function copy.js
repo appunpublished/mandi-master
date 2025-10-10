@@ -341,9 +341,6 @@
       }catch(e){ currentShop = 'Shop'; }
       // load namespaced local data
       products = loadLS(LS_PRODUCTS(currentUID)); sales = loadLS(LS_SALES(currentUID));
-      // ensure backward compatibility for old products without baseUnitCount
-      products.forEach(p => { if (!p.baseUnitCount) p.baseUnitCount = (p.unit === 'dozen') ? 12 : 1; });
-
       // ensure local image cache map exists
       const imgCache = JSON.parse(localStorage.getItem(LS_IMAGES(currentUID)) || "{}");
       appWrap.classList.remove('hidden'); authWrap.classList.add('hidden');
@@ -547,9 +544,7 @@
       }
       editProductId = null;
     } else {
-      const baseUnitCount = (unit === 'dozen') ? 12 : 1;  // handle dozen-based items
-      const newP = { id: uidGen(), name, price, qty, unit, baseUnitCount, lastUpdated: now() };
-
+      const newP = { id: uidGen(), name, price, qty, unit, lastUpdated: now() };
       if(selectedBase64) newP.localImageBase64 = selectedBase64;
       if(selectedSharedUrl) newP.imageURL = selectedSharedUrl;
       products.push(newP);
@@ -612,97 +607,35 @@
       return `<option value="${p.id}">${label}</option>`;
     }).join('') || '<option value="">No match</option>';
     const sel = products.find(x => x.id === sale_product.value) || list[0];
-    if (sel) {
-        // This part can be enhanced to dynamically change sale_unit_box options.
-        // For now, we'll keep the static HTML options.
-    }
+    sale_unit_box.textContent = sel ? sel.unit : '—';
   }
 
-  addToCartBtn.onclick = () => {
-    const pid = sale_product.value;
-    const p = products.find(x => x.id === pid);
-    if (!p) return showBilingualAlert('product_required');
-  
-    const q = Number(sale_qty.value);
-    if (!q || q <= 0) return showBilingualAlert('product_required');
-  
-    const selectedUnit = sale_unit_box.value;
-    let finalQty = q;
-    let displayUnit = selectedUnit;
-  
-    // ✅ Corrected dozen/piece conversion
-    if (p.unit === 'dozen' && selectedUnit === 'piece') {
-      // Convert pieces to a fraction of a dozen using baseUnitCount for accuracy
-      finalQty = q / (p.baseUnitCount || 12);
-    }
-  
-    const existing = cart.find(x => x.id === p.id && x.unit === p.unit);
-    if (existing) {
-      existing.qty = Number(existing.qty) + finalQty;
-      // Ensure baseUnitCount is present for older cart items
-      if (!existing.baseUnitCount && p.baseUnitCount) {
-        existing.baseUnitCount = p.baseUnitCount;
-      }
-    } else {
-      // Add baseUnitCount to the cart item so it can be used in other functions
-      cart.push({
-        id: p.id,
-        name: p.name,
-        price: p.price,
-        qty: finalQty,
-        unit: p.unit, // Always store the product's base unit (e.g., 'dozen')
-        baseUnitCount: p.baseUnitCount
-      });
-    }
-  
-    sale_qty.value = '';
-    refreshCartUI();
-    showToast(`${q} ${displayUnit} of ${p.name} added`);
+  addToCartBtn.onclick = ()=>{
+    const pid = sale_product.value; const p = products.find(x=>x.id===pid); if(!p) return showBilingualAlert('product_required');
+    const q = Number(sale_qty.value); if(!q || q<=0) return showBilingualAlert('product_required');
+    const existing = cart.find(x=>x.id===p.id && x.unit===p.unit);
+    if(existing) existing.qty = Number(existing.qty) + q; else cart.push({ id: p.id, name: p.name, price: p.price, qty: q, unit: p.unit });
+    sale_qty.value=''; refreshCartUI();
   };
 
-  // recalc and show totals including discount
   // recalc and show totals including discount
   function refreshCartUI(){
     quickCart.innerHTML = '';
     if(!cart.length) return quickCart.innerHTML = '<div class="muted">Cart empty</div>';
-    
     cart.forEach((it, idx) => {
       const div = document.createElement('div');
-      let shownQty = it.qty;
-      let shownUnit = it.unit;
-      let pricePerShownUnit = it.price;
-
-      // Handle display for dozen-based items
-      if (it.unit === 'dozen' && it.baseUnitCount) {
-          shownQty = (it.qty * it.baseUnitCount).toFixed(0);
-          shownUnit = 'piece';
-          pricePerShownUnit = it.price / it.baseUnitCount;
-      }
-
-      const lineTotal = it.qty * it.price;
-      // Get singular form of the unit for display (e.g., piece not pieces)
-      const singleUnitName = shownUnit.endsWith('s') ? shownUnit.slice(0, -1) : shownUnit;
-
       div.className = 'flex justify-between items-center border rounded p-2';
-      // ⭐ Updated innerHTML to show the full calculation
-      div.innerHTML = `<div class="flex-1">
-                          <b>${escapeHtml(it.name)}</b>
-                          <div class="muted small">${shownQty} ${shownUnit} × ${formatCurrency(pricePerShownUnit)}/${singleUnitName} = <b>${formatCurrency(lineTotal)}</b></div>
-                       </div>
-                       <div class="flex gap-1">
-                          <button class="px-2 bg-slate-200 rounded dec">-</button>
-                          <button class="px-2 bg-slate-200 rounded inc">+</button>
-                          <button class="px-2 bg-red-500 text-white rounded rm">X</button>
-                       </div>`;
-      
-      // ⭐ Updated inc/dec logic to handle single pieces for dozen items
-      const incrementValue = 1 / (it.baseUnitCount || 1);
-      div.querySelector('.inc').onclick = ()=>{ cart[idx].qty = Number(cart[idx].qty) + incrementValue; refreshCartUI(); };
-      div.querySelector('.dec').onclick = ()=>{ cart[idx].qty = Math.max(0, Number(cart[idx].qty) - incrementValue); refreshCartUI(); };
-      div.querySelector('.rm').onclick = ()=>{ cart.splice(idx,1); if(cart[idx] && cart[idx].qty <= 0) cart.splice(idx,1); refreshCartUI(); };
+      div.innerHTML = `<div><b>${escapeHtml(it.name)}</b><div class="muted small">${it.qty} ${it.unit} • ₹ ${Number(it.price).toFixed(2)}</div></div>
+        <div class="flex gap-1">
+          <button class="px-2 bg-slate-200 rounded dec">-</button>
+          <button class="px-2 bg-slate-200 rounded inc">+</button>
+          <button class="px-2 bg-red-500 text-white rounded rm">X</button>
+        </div>`;
+      div.querySelector('.inc').onclick = ()=>{ cart[idx].qty = Number(cart[idx].qty) + 1; refreshCartUI(); };
+      div.querySelector('.dec').onclick = ()=>{ cart[idx].qty = Math.max(0.01, Number(cart[idx].qty) - 1); refreshCartUI(); };
+      div.querySelector('.rm').onclick = ()=>{ cart.splice(idx,1); refreshCartUI(); };
       quickCart.appendChild(div);
     });
-
     const total = cart.reduce((s,it)=> s + (it.qty * it.price), 0);
 
     // read discount inputs
@@ -759,12 +692,7 @@
     // deduct stock if provided
     cart.forEach(it=>{
       const prod = products.find(p=>p.id===it.id);
-      if (prod && prod.qty !== '' && !isNaN(prod.qty)) {
-        // Simplified logic: it.qty is already in the correct base unit (e.g., 0.5 dozen)
-        prod.qty = Number(prod.qty) - Number(it.qty);
-        if (prod.qty < 0) prod.qty = 0;
-        prod.lastUpdated = now();
-      }
+      if(prod && prod.qty !== '' && !isNaN(prod.qty)){ prod.qty = Number(prod.qty) - Number(it.qty); if(prod.qty < 0) prod.qty = 0; prod.lastUpdated = now(); }
     });
     saveLS(LS_PRODUCTS(currentUID), products);
     cart = []; refreshCartUI(); refreshProductsUI(); refreshHistoryUI(); markDirty(true);
@@ -1173,14 +1101,7 @@
         return {product, kilos, grams};
       }
       // fallback: entire text as product
-      let unit = 'kg';
-if (text.includes('piece') || text.includes('पीस')) unit = 'piece';
-else if (text.includes('dozen') || text.includes('दर्जन')) unit = 'dozen';
-else if (text.includes('kilo') || text.includes('किलो')) unit = 'kg';
-else if (text.includes('gram') || text.includes('ग्राम')) unit = 'g';
-
-return { product, kilos, grams, unit };
-
+      return {product: text, kilos:0, grams:0};
     }
 
     // Setup SpeechRecognition instance (reused)
