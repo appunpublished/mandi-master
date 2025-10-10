@@ -1243,4 +1243,28 @@
   // ensure UI refresh once more shortly after load (fix timing)
   setTimeout(()=>{ refreshProductsUI(); refreshCartUI(); refreshHistoryUI(); }, 600);
 
+
+
+// -------- BURGER MENU TOGGLE --------
+const menuToggle = document.getElementById('menuToggle');
+const closeMenu = document.getElementById('closeMenu');
+const sideMenu = document.getElementById('sideMenu');
+
+menuToggle.addEventListener('click', () => {
+  sideMenu.classList.remove('translate-x-full');
+});
+
+closeMenu.addEventListener('click', () => {
+  sideMenu.classList.add('translate-x-full');
+});
+
+// Optional: close when clicking outside
+window.addEventListener('click', (e) => {
+  if (!sideMenu.contains(e.target) && !menuToggle.contains(e.target)) {
+    sideMenu.classList.add('translate-x-full');
+  }
+});
+
+
+
 })();

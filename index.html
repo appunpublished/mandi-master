@@ -106,19 +106,35 @@
 
   <!-- APP -->
   <div id="appWrap" class="hidden w-full max-w-xl">
-    <header class="flex items-center justify-between mb-4">
-      <div>
-        <div id="shopName" class="text-lg font-bold" data-i18n="app_title">Vendor POS</div>
-        <div id="vendorInfo" class="small muted">email • uid</div>
-      </div>
-      <div class="flex items-center gap-2">
-        <div id="syncStatus" class="px-3 py-1 rounded small muted" data-i18n="sync_manual">Manual sync</div>
-        <button id="pushBtn" class="big-btn bg-amber-300 text-white small" data-i18n="btn_push">⬆️ Push</button>
-        <button id="pullBtn" class="big-btn bg-sky-500 text-white small" data-i18n="btn_pull">⬇️ Pull</button>
-        <button id="langToggle" class="lang-toggle" title="Toggle language">🌐 हिंदी</button>
-        <button id="logoutBtn" class="big-btn bg-red-500 text-white small" data-i18n="btn_logout">Logout</button>
-      </div>
-    </header>
+   <header class="flex items-center justify-between mb-4">
+  <div>
+    <div id="shopName" class="text-lg font-bold" data-i18n="app_title">Vendor POS</div>
+    
+  </div>
+
+  <!-- Burger button -->
+  <button id="menuToggle" class="p-2 rounded-lg bg-slate-100 hover:bg-slate-200">
+    ☰
+  </button>
+</header>
+
+<!-- Hidden Sidebar Menu -->
+<div id="sideMenu"
+     class="fixed top-0 right-0 w-64 h-full bg-white shadow-lg transform translate-x-full transition-transform duration-300 z-50 flex flex-col">
+  <div class="p-4 border-b flex justify-between items-center">
+    <h3 class="font-semibold text-lg" data-i18n="menu_title">Menu</h3>
+    <button id="closeMenu" class="text-xl font-bold">×</button>
+  </div>
+  <div class="flex-1 p-4 space-y-3 overflow-auto">
+    <div id="vendorInfo" class="small muted">email • uid</div>
+    <div id="syncStatus" class="px-3 py-1 rounded small muted" data-i18n="sync_manual">Manual sync</div>
+    <button id="pushBtn" class="w-full big-btn bg-amber-300 text-white" data-i18n="btn_push">⬆️ Push</button>
+    <button id="pullBtn" class="w-full big-btn bg-sky-500 text-white" data-i18n="btn_pull">⬇️ Pull</button>
+    <button id="langToggle" class="w-full big-btn bg-indigo-100" title="Toggle language">🌐 हिंदी</button>
+    <button id="logoutBtn" class="w-full big-btn bg-red-500 text-white" data-i18n="btn_logout">Logout</button>
+  </div>
+</div>
+
 
     <nav class="flex gap-2 mb-4">
       <button id="tabProducts" class="flex-1 big-btn bg-emerald-100" data-i18n="tab_products">Products</button>
