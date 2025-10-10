@@ -660,46 +660,39 @@
     showToast(`${q} ${displayUnit} of ${p.name} added`);
   };
 
-  // recalc and show totals including discount
-  // recalc and show totals including discount
   function refreshCartUI(){
     quickCart.innerHTML = '';
     if(!cart.length) return quickCart.innerHTML = '<div class="muted">Cart empty</div>';
     
     cart.forEach((it, idx) => {
       const div = document.createElement('div');
-      let shownQty = it.qty;
-      let shownUnit = it.unit;
-      let pricePerShownUnit = it.price;
+      const lineTotal = it.qty * it.price;
+      let detailsHtml;
 
-      // Handle display for dozen-based items
+      // ⭐ [NEW] Improved display logic for different units
       if (it.unit === 'dozen' && it.baseUnitCount) {
-          shownQty = (it.qty * it.baseUnitCount).toFixed(0);
-          shownUnit = 'piece';
-          pricePerShownUnit = it.price / it.baseUnitCount;
+        // For dozen-based items, show quantity in pieces and reference the dozen price
+        const pieceQty = Math.round(it.qty * it.baseUnitCount);
+        const pieceUnitLabel = translations[currentLang]['unit_piece'] || 'piece';
+        const dozenUnitLabel = translations[currentLang]['unit_dozen'] || 'dozen';
+        
+        detailsHtml = `<div class="small">${pieceQty} ${pieceUnitLabel} <span class="muted">(@ ${formatCurrency(it.price)}/${dozenUnitLabel})</span> = <b>${formatCurrency(lineTotal)}</b></div>`;
+      } else {
+        // Original logic for other units (kg, g, piece)
+        const singleUnitName = it.unit.endsWith('s') ? it.unit.slice(0, -1) : it.unit;
+        detailsHtml = `<div class="muted small">${it.qty} ${it.unit} × ${formatCurrency(it.price)}/${singleUnitName} = <b>${formatCurrency(lineTotal)}</b></div>`;
       }
 
-      const lineTotal = it.qty * it.price;
-      // Get singular form of the unit for display (e.g., piece not pieces)
-      const singleUnitName = shownUnit.endsWith('s') ? shownUnit.slice(0, -1) : shownUnit;
-
       div.className = 'flex justify-between items-center border rounded p-2';
-      // ⭐ Updated innerHTML to show the full calculation
       div.innerHTML = `<div class="flex-1">
                           <b>${escapeHtml(it.name)}</b>
-                          <div class="muted small">${shownQty} ${shownUnit} × ${formatCurrency(pricePerShownUnit)}/${singleUnitName} = <b>${formatCurrency(lineTotal)}</b></div>
+                          ${detailsHtml}
                        </div>
                        <div class="flex gap-1">
-                          <button class="px-2 bg-slate-200 rounded dec">-</button>
-                          <button class="px-2 bg-slate-200 rounded inc">+</button>
                           <button class="px-2 bg-red-500 text-white rounded rm">X</button>
                        </div>`;
       
-      // ⭐ Updated inc/dec logic to handle single pieces for dozen items
-      const incrementValue = 1 / (it.baseUnitCount || 1);
-      div.querySelector('.inc').onclick = ()=>{ cart[idx].qty = Number(cart[idx].qty) + incrementValue; refreshCartUI(); };
-      div.querySelector('.dec').onclick = ()=>{ cart[idx].qty = Math.max(0, Number(cart[idx].qty) - incrementValue); refreshCartUI(); };
-      div.querySelector('.rm').onclick = ()=>{ cart.splice(idx,1); if(cart[idx] && cart[idx].qty <= 0) cart.splice(idx,1); refreshCartUI(); };
+      div.querySelector('.rm').onclick = ()=>{ cart.splice(idx,1); refreshCartUI(); };
       quickCart.appendChild(div);
     });
 
