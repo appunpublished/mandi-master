@@ -3,34 +3,53 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Vendor Storefront</title>
+  <title>Vendor Store</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 </head>
-<body class="bg-gray-50 min-h-screen p-4">
-  <div class="max-w-lg mx-auto">
-    <div id="vendorShop" class="text-center text-2xl font-bold mb-3 text-emerald-700">Loading vendor...</div>
+<body class="bg-gray-50 min-h-screen font-[Inter]">
 
-    <div id="productGrid" class="grid grid-cols-2 gap-4 mb-6"></div>
+  <!-- Header -->
+  <div class="bg-emerald-600 text-white text-center p-4 text-xl font-semibold" id="vendorShop">Loading...</div>
 
-    <div id="cartArea" class="hidden bg-white rounded-lg shadow p-4 mb-6">
-      <h3 class="font-semibold text-lg mb-2">Your Cart</h3>
-      <div id="cartList" class="space-y-2 mb-2"></div>
-      <div id="cartTotal" class="text-right font-semibold text-emerald-700"></div>
-    </div>
+  <!-- Product List -->
+  <div class="max-w-xl mx-auto p-4" id="productList"></div>
 
-    <div id="customerForm" class="bg-white rounded-lg shadow p-4">
-      <input id="custName" placeholder="Your name" class="w-full border rounded p-2 mb-2" />
-      <input id="custPhone" placeholder="Your phone number" class="w-full border rounded p-2 mb-3" />
-      <button id="placeOrderBtn" class="w-full bg-emerald-600 text-white font-semibold rounded-lg p-3">Place Order</button>
-    </div>
+  <!-- Floating Buttons -->
+  <div class="fixed bottom-5 right-5 flex flex-col gap-2">
+    <button id="cartToggle" class="bg-amber-500 text-white px-4 py-3 rounded-full shadow-lg font-semibold hidden">
+      🛒 <span id="cartCount">0</span>
+    </button>
+    <button id="historyBtn" class="bg-slate-600 text-white px-4 py-3 rounded-full shadow-lg font-semibold">
+      📜 History
+    </button>
+  </div>
 
-    <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 bg-black text-white px-4 py-2 rounded hidden"></div>
+  <!-- Cart Drawer -->
+  <div id="cartDrawer" class="fixed bottom-0 left-0 w-full bg-white shadow-lg rounded-t-2xl p-4 hidden z-50">
+    <h3 class="text-lg font-semibold mb-2">Your Cart</h3>
+    <div id="cartItems" class="space-y-2 max-h-60 overflow-auto"></div>
+    <div id="cartTotal" class="text-right font-bold mt-2 text-emerald-700"></div>
+    <hr class="my-3">
+    <input id="custName" placeholder="Your name" class="w-full border rounded p-2 mb-2" />
+    <input id="custPhone" placeholder="Your phone number" class="w-full border rounded p-2 mb-2" />
+    <textarea id="custAddress" placeholder="Delivery address" class="w-full border rounded p-2 mb-3 h-20"></textarea>
+    <button id="placeOrderBtn" class="w-full bg-emerald-600 text-white py-2 rounded-lg font-semibold">Place Order</button>
+    <button id="closeCart" class="w-full bg-gray-200 text-gray-700 mt-2 py-2 rounded-lg">Close</button>
+  </div>
+
+  <!-- Order History Drawer -->
+  <div id="historyDrawer" class="fixed bottom-0 left-0 w-full bg-white shadow-lg rounded-t-2xl p-4 hidden z-50">
+    <h3 class="text-lg font-semibold mb-2">Your Past Orders</h3>
+    <input id="historyPhone" placeholder="Enter your phone number" class="w-full border rounded p-2 mb-2" />
+    <button id="loadHistoryBtn" class="w-full bg-emerald-500 text-white rounded-lg py-2 mb-3">Load Orders</button>
+    <div id="historyList" class="space-y-2 max-h-72 overflow-auto"></div>
+    <button id="closeHistory" class="w-full bg-gray-200 text-gray-700 mt-2 py-2 rounded-lg">Close</button>
   </div>
 
   <script>
-    // 🔹 Firebase Config (use same one as your function.js)
+    // Firebase Config
     const firebaseConfig = {
       apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
       authDomain: "vendor-pos.firebaseapp.com",
@@ -42,129 +61,164 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 🔹 Elements
+    // Elements
     const vendorShop = document.getElementById('vendorShop');
-    const productGrid = document.getElementById('productGrid');
-    const cartArea = document.getElementById('cartArea');
-    const cartList = document.getElementById('cartList');
+    const productList = document.getElementById('productList');
+    const cartDrawer = document.getElementById('cartDrawer');
+    const cartToggle = document.getElementById('cartToggle');
+    const cartItems = document.getElementById('cartItems');
+    const cartCount = document.getElementById('cartCount');
     const cartTotal = document.getElementById('cartTotal');
-    const placeOrderBtn = document.getElementById('placeOrderBtn');
     const custName = document.getElementById('custName');
     const custPhone = document.getElementById('custPhone');
-    const toast = document.getElementById('toast');
+    const custAddress = document.getElementById('custAddress');
+    const placeOrderBtn = document.getElementById('placeOrderBtn');
+    const closeCart = document.getElementById('closeCart');
+    const historyBtn = document.getElementById('historyBtn');
+    const historyDrawer = document.getElementById('historyDrawer');
+    const closeHistory = document.getElementById('closeHistory');
+    const historyPhone = document.getElementById('historyPhone');
+    const loadHistoryBtn = document.getElementById('loadHistoryBtn');
+    const historyList = document.getElementById('historyList');
 
     let cart = [];
-    let vendorId = null;
-
-    // 🔹 Helper: Toast
-    function showToast(msg){
-      toast.textContent = msg;
-      toast.style.display = 'block';
-      setTimeout(()=> toast.style.display='none', 2500);
-    }
-
-    // 🔹 Get Vendor ID from URL
     const params = new URLSearchParams(window.location.search);
-    vendorId = params.get('vendor_id');
-    if(!vendorId){
-      vendorShop.textContent = 'Invalid vendor link!';
-      productGrid.innerHTML = '<div class="col-span-2 text-center text-gray-500">No vendor ID in link.</div>';
+    const vendorId = params.get('vendor_id');
+
+    if (!vendorId) {
+      vendorShop.textContent = "Invalid Vendor Link!";
       throw new Error("Missing vendor_id parameter");
     }
 
-    // 🔹 Load vendor + products
-    async function loadVendorProducts(){
-      try {
-        const vendDoc = await db.collection('vendors').doc(vendorId).get();
-        if(!vendDoc.exists){
-          vendorShop.textContent = 'Vendor not found';
-          return;
-        }
-        vendorShop.textContent = vendDoc.data().shopName || 'Vendor Shop';
+    async function loadVendor() {
+      const vdoc = await db.collection('vendors').doc(vendorId).get();
+      vendorShop.textContent = vdoc.exists ? vdoc.data().shopName : "Vendor Shop";
 
-        const prodsSnap = await db.collection('vendors').doc(vendorId).collection('products').get();
-        if(prodsSnap.empty){
-          productGrid.innerHTML = '<div class="col-span-2 text-center text-gray-500">No products available.</div>';
-          return;
-        }
-
-        productGrid.innerHTML = '';
-        prodsSnap.forEach(doc=>{
-          const p = doc.data();
-          if(p.deleted) return;
-
-          const card = document.createElement('div');
-          card.className = 'bg-white border rounded-lg shadow-sm p-2 flex flex-col items-center text-center';
-          card.innerHTML = `
-            <img src="${p.imageURL || ''}" onerror="this.src='https://via.placeholder.com/100'" class="w-full h-32 object-cover rounded mb-2" />
-            <div class="font-semibold">${p.name}</div>
-            <div class="text-sm text-gray-500 mb-2">₹${p.price} / ${p.unit}</div>
-            <input type="number" min="1" value="1" class="w-16 border rounded p-1 text-center mb-2" />
-            <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm">Add</button>
-          `;
-          const qtyInput = card.querySelector('input');
-          card.querySelector('button').onclick = () => {
-            const qty = Number(qtyInput.value) || 1;
-            cart.push({ name: p.name, price: p.price, qty, unit: p.unit });
-            refreshCart();
-            showToast(`${p.name} added to cart`);
-          };
-          productGrid.appendChild(card);
-        });
-      } catch(err){
-        console.error(err);
-        showToast('Error loading vendor');
+      const snap = await db.collection('vendors').doc(vendorId).collection('products').get();
+      if (snap.empty) {
+        productList.innerHTML = '<div class="text-center text-gray-500">No products available.</div>';
+        return;
       }
+
+      snap.forEach(doc => {
+        const p = doc.data();
+        if (p.deleted) return;
+
+        const div = document.createElement('div');
+        div.className = 'flex items-center justify-between bg-white rounded-lg shadow p-2 mb-2';
+        div.innerHTML = `
+          <div class="flex-1">
+            <div class="font-semibold">${p.name}</div>
+            <div class="text-sm text-gray-600">₹${p.price}/${p.unit}</div>
+          </div>
+          <div class="flex items-center gap-1">
+            <select class="border rounded p-1 text-sm qtySelect">
+              <option value="0.25">250g</option>
+              <option value="0.5">500g</option>
+              <option value="1">1kg</option>
+              <option value="custom">Custom</option>
+            </select>
+            <input type="number" step="0.01" min="0.01" value="1" class="border rounded p-1 w-16 text-sm qtyInput hidden" />
+            <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm addBtn">Add</button>
+          </div>
+        `;
+
+        const select = div.querySelector('.qtySelect');
+        const input = div.querySelector('.qtyInput');
+        const addBtn = div.querySelector('.addBtn');
+
+        select.onchange = () => {
+          if (select.value === "custom") input.classList.remove('hidden');
+          else input.classList.add('hidden');
+        };
+
+        addBtn.onclick = () => {
+          let qty = select.value === "custom" ? parseFloat(input.value) : parseFloat(select.value);
+          if (isNaN(qty) || qty <= 0) qty = 1;
+          cart.push({ name: p.name, price: p.price, unit: p.unit, qty });
+          refreshCart();
+        };
+
+        productList.appendChild(div);
+      });
     }
 
-    // 🔹 Cart UI
-    function refreshCart(){
-      cartList.innerHTML = '';
-      if(cart.length === 0){ cartArea.classList.add('hidden'); return; }
-      cartArea.classList.remove('hidden');
+    function refreshCart() {
+      cartItems.innerHTML = '';
       let total = 0;
-      cart.forEach((it, idx)=>{
-        total += it.qty * it.price;
-        const div = document.createElement('div');
-        div.className = 'flex justify-between items-center border-b pb-1';
-        div.innerHTML = `<div>${it.name} (${it.qty} ${it.unit})</div>
-                         <div>₹${(it.qty*it.price).toFixed(2)}</div>`;
-        cartList.appendChild(div);
+      cart.forEach(it => {
+        const lineTotal = it.qty * it.price;
+        total += lineTotal;
+        const item = document.createElement('div');
+        item.className = 'flex justify-between items-center border-b pb-1';
+        item.innerHTML = `<div>${it.name} (${it.qty} ${it.unit})</div><div>₹${lineTotal.toFixed(2)}</div>`;
+        cartItems.appendChild(item);
       });
+      cartCount.textContent = cart.length;
       cartTotal.textContent = `Total: ₹${total.toFixed(2)}`;
+      if (cart.length > 0) cartToggle.classList.remove('hidden');
     }
+
+    cartToggle.onclick = () => cartDrawer.classList.toggle('hidden');
+    closeCart.onclick = () => cartDrawer.classList.add('hidden');
 
     // 🔹 Place Order
     placeOrderBtn.onclick = async () => {
       const name = custName.value.trim();
       const phone = custPhone.value.trim();
-      if(!name || !phone){ showToast("Please enter your name and phone."); return; }
-      if(cart.length === 0){ showToast("Your cart is empty!"); return; }
+      const address = custAddress.value.trim();
+      if (!name || !phone || !address) return alert("Please fill name, phone, and address.");
+      if (cart.length === 0) return alert("Cart is empty!");
 
-      const total = cart.reduce((sum,i)=> sum + i.qty * i.price, 0);
-      const order = {
+      const total = cart.reduce((sum, i) => sum + i.qty * i.price, 0);
+      await db.collection('vendors').doc(vendorId).collection('orders').add({
         customerName: name,
         phone,
+        address,
         items: cart,
         total,
-        status: 'Pending',
+        status: "Pending",
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      };
-
-      try {
-        await db.collection('vendors').doc(vendorId).collection('orders').add(order);
-        showToast("✅ Order placed successfully!");
-        cart = [];
-        refreshCart();
-        custName.value = '';
-        custPhone.value = '';
-      } catch(err){
-        console.error(err);
-        showToast("Error placing order. Check console.");
-      }
+      });
+      alert("✅ Order placed successfully!");
+      cart = [];
+      refreshCart();
+      cartDrawer.classList.add('hidden');
     };
 
-    loadVendorProducts();
+    // 🔹 Order History
+    historyBtn.onclick = () => historyDrawer.classList.toggle('hidden');
+    closeHistory.onclick = () => historyDrawer.classList.add('hidden');
+
+    loadHistoryBtn.onclick = async () => {
+      const phone = historyPhone.value.trim();
+      if (!phone) return alert("Enter phone number to view orders.");
+      const snap = await db.collection('vendors').doc(vendorId).collection('orders')
+        .where('phone', '==', phone).orderBy('createdAt', 'desc').get();
+
+      historyList.innerHTML = '';
+      if (snap.empty) {
+        historyList.innerHTML = '<div class="text-gray-500 text-center">No past orders found.</div>';
+        return;
+      }
+
+      snap.forEach(doc => {
+        const d = doc.data();
+        const items = d.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+        const div = document.createElement('div');
+        div.className = 'border rounded p-3 bg-white shadow-sm';
+        div.innerHTML = `
+          <div class="font-semibold mb-1">${d.customerName}</div>
+          <div class="text-sm text-gray-600 mb-1">${items}</div>
+          <div class="text-right font-semibold text-emerald-700">₹${d.total}</div>
+          <div class="text-xs text-gray-500 mt-1">Status: ${d.status}</div>
+          <div class="text-xs text-gray-400">${d.address || ''}</div>
+        `;
+        historyList.appendChild(div);
+      });
+    };
+
+    loadVendor();
   </script>
 </body>
 </html>

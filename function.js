@@ -376,7 +376,7 @@
     if(tab==='products'){ viewProducts.classList.remove('hidden'); tabProducts.classList.add('bg-emerald-200'); }
     if(tab==='sales'){ viewSales.classList.remove('hidden'); tabSales.classList.add('bg-emerald-200'); }
     if(tab==='history'){ viewHistory.classList.remove('hidden'); tabHistory.classList.add('bg-emerald-200'); }
-    if(tab==='orders'){ viewOrders.classList.remove('hidden'); tabOrders.classList.add('bg-emerald-200'); loadOrders(); }
+    if(tab==='orders'){ viewOrders.classList.remove('hidden'); tabOrders.classList.add('bg-emerald-200'); listenToOrders(); }
   }
   tabProducts.onclick=()=>show('products'); tabSales.onclick=()=>show('sales'); tabHistory.onclick=()=>show('history');
   show('products');
@@ -1394,25 +1394,164 @@ shareLinkBtn.onclick = () => {
 };
 
 
+
+
+//Badge
+const orderBadge = document.getElementById('orderBadge');
+const orderFilter = document.getElementById('orderFilter');
+
+let unseenCount = 0;
+let allOrders = [];
+
+
+
 //------Load customer Order ---------------------
 
-async function loadOrders(){
-  if(!currentUID) return;
-  const snap = await db.collection('vendors').doc(currentUID).collection('orders').orderBy('createdAt','desc').get();
-  ordersList.innerHTML = '';
-  if(snap.empty){ ordersList.innerHTML = '<div class="muted">No customer orders yet</div>'; return; }
-  snap.forEach(doc=>{
-    const d = doc.data();
-    const items = d.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
-    ordersList.innerHTML += `
-      <div class="border rounded p-3 bg-white">
-        <div><b>${d.customerName || 'Customer'}</b> — ${d.phone || ''}</div>
-        <div class="small muted">${items}</div>
-        <div class="text-right font-semibold mt-1">₹ ${d.total}</div>
-        <div class="text-xs muted">${d.status || 'Pending'}</div>
-      </div>`;
+
+// async function loadOrders() {
+//   const snap = await db.collection('vendors').doc(currentUID).collection('orders').orderBy('createdAt', 'desc').get();
+//   ordersList.innerHTML = '';
+//   if (snap.empty) {
+//     ordersList.innerHTML = '<div class="muted">No orders yet</div>';
+//     return;
+//   }
+
+//   snap.forEach(doc => {
+//     const data = doc.data();
+//     const div = document.createElement('div');
+//     div.className = 'border rounded p-3 bg-white shadow-sm';
+//     const items = data.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+//     div.innerHTML = `
+//       <div class="font-semibold">${data.customerName} — ${data.phone}</div>
+//       <div class="small muted mb-1">${items}</div>
+//       <div class="font-semibold text-emerald-700 mb-2">₹${data.total}</div>
+//       <select class="border rounded p-1 text-sm statusSelect">
+//         <option ${data.status==='Pending'?'selected':''}>Pending</option>
+//         <option ${data.status==='Confirmed'?'selected':''}>Confirmed</option>
+//         <option ${data.status==='Delivered'?'selected':''}>Delivered</option>
+//         <option ${data.status==='Cancelled'?'selected':''}>Cancelled</option>
+//       </select>
+//     `;
+//     const select = div.querySelector('.statusSelect');
+//     select.onchange = async () => {
+//       await db.collection('vendors').doc(currentUID).collection('orders').doc(doc.id).update({ status: select.value });
+//       select.classList.add('bg-emerald-100');
+//     };
+//     ordersList.appendChild(div);
+//   });
+// }
+
+function listenToOrders() {
+  if (!currentUID) return;
+
+  const ordersRef = db.collection('vendors').doc(currentUID).collection('orders').orderBy('createdAt', 'desc');
+
+  ordersRef.onSnapshot(snapshot => {
+    if (snapshot.size > lastOrderCount && lastOrderCount > 0) {
+      const latest = snapshot.docs[0].data();
+      showToast(`🛒 New order from ${latest.customerName || 'Customer'}`);
+      playSound();
+      unseenCount += 1;
+      updateBadge();
+    }
+    lastOrderCount = snapshot.size;
+
+    allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    renderOrders();
   });
 }
+
+
+function updateBadge() {
+  if (unseenCount > 0) {
+    orderBadge.textContent = unseenCount;
+    orderBadge.classList.remove('hidden');
+  } else {
+    orderBadge.classList.add('hidden');
+  }
+}
+
+// When Orders tab is opened, mark all as seen
+tabOrders.onclick = () => {
+  unseenCount = 0;
+  updateBadge();
+  show('orders');
+};
+
+orderFilter.onchange = () => renderOrders();
+
+function renderOrders() {
+  const filter = orderFilter.value;
+  ordersList.innerHTML = '';
+
+  let visibleOrders = allOrders;
+  if (filter !== 'all') {
+    visibleOrders = allOrders.filter(o => o.status === filter);
+  }
+
+  if (visibleOrders.length === 0) {
+    ordersList.innerHTML = `<div class="muted text-center">No ${filter === 'all' ? '' : filter} orders</div>`;
+    return;
+  }
+
+  visibleOrders.forEach(order => {
+    const colorMap = {
+      Pending: 'bg-gray-200 text-gray-800',
+      Confirmed: 'bg-blue-200 text-blue-800',
+      Delivered: 'bg-green-200 text-green-800',
+      Cancelled: 'bg-red-200 text-red-800'
+    };
+    const tagColor = colorMap[order.status] || 'bg-gray-100';
+
+    const div = document.createElement('div');
+    div.className = 'border rounded p-3 bg-white shadow-sm';
+    const items = order.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+    div.innerHTML = `
+      <div class="flex justify-between items-center mb-1">
+        <div class="font-semibold">${order.customerName} — ${order.phone}</div>
+        <span class="px-2 py-0.5 rounded text-xs font-semibold ${tagColor}">${order.status}</span>
+      </div>
+      <div class="small muted mb-1">${items}</div>
+      <div class="font-semibold text-emerald-700 mb-2 text-right">₹${order.total}</div>
+      <select class="border rounded p-1 text-sm statusSelect">
+        <option ${order.status === 'Pending' ? 'selected' : ''}>Pending</option>
+        <option ${order.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+        <option ${order.status === 'Delivered' ? 'selected' : ''}>Delivered</option>
+        <option ${order.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
+      </select>
+    `;
+    const select = div.querySelector('.statusSelect');
+    select.onchange = async () => {
+      await db.collection('vendors').doc(currentUID).collection('orders').doc(order.id).update({ status: select.value });
+      select.classList.add('bg-emerald-100');
+      showToast(`✅ Order marked as ${select.value}`);
+    };
+    ordersList.appendChild(div);
+  });
+}
+
+
+
+
+
+
+//Notification 
+
+
+const toast = document.getElementById('toast');
+const notifySound = document.getElementById('notifySound');
+let lastOrderCount = 0;
+
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.remove('hidden');
+  setTimeout(() => toast.classList.add('hidden'), 3000);
+}
+
+function playSound() {
+  try { notifySound.play(); } catch (e) { console.warn("Sound blocked by browser autoplay policy"); }
+}
+
 
 
 

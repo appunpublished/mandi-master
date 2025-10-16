@@ -132,7 +132,10 @@
       <button id="tabProducts" class="flex-1 big-btn bg-emerald-100" data-i18n="tab_products">Products</button>
       <button id="tabSales" class="flex-1 big-btn bg-slate-100" data-i18n="tab_sales">Sales</button>
       <button id="tabHistory" class="flex-1 big-btn bg-slate-100" data-i18n="tab_history">History</button>
-      <button id="tabOrders" class="flex-1 big-btn bg-slate-100">Orders</button>
+      <button id="tabOrders" class="relative flex-1 big-btn bg-slate-100">
+        Orders
+        <span id="orderBadge" class="absolute top-0 right-2 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full hidden">0</span>
+      </button>
     </nav>
 
     <main class="bg-white rounded-xl p-4 shadow">
@@ -232,13 +235,27 @@
       </section>
 
       <section id="view-orders" class="hidden">
-        <h3 class="font-semibold mb-2">Customer Orders</h3>
-        <div id="ordersList" class="space-y-2 max-h-72 overflow-auto"></div>
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="font-semibold text-lg">Customer Orders</h3>
+          <select id="orderFilter" class="border rounded p-1 text-sm">
+            <option value="all">All</option>
+            <option value="Pending">Pending</option>
+            <option value="Confirmed">Confirmed</option>
+            <option value="Delivered">Delivered</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div id="ordersList" class="space-y-2 max-h-96 overflow-auto"></div>
       </section>
+      
 
 
     </main>
   </div>
+
+<div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-lg shadow-lg text-sm hidden z-50"></div>
+<audio id="notifySound" src="assets/sounds/notification.wav" preload="auto"></audio>
+
  <script src="function.js"></script>
 
 </body>
