@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Vendor Store</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen font-[Inter]">
+
+  <!-- Header -->
+  <div class="bg-emerald-600 text-white text-center p-4 text-xl font-semibold" id="vendorShop">Loading...</div>
+
+  <!-- Product List -->
+  <div class="max-w-xl mx-auto p-4" id="productList"></div>
+
+  <!-- Floating Buttons -->
+  <div class="fixed bottom-5 right-5 flex flex-col gap-2">
+    <button id="cartToggle" class="bg-amber-500 text-white px-4 py-3 rounded-full shadow-lg font-semibold hidden">
+      🛒 <span id="cartCount">0</span>
+    </button>
+    <button id="historyBtn" class="bg-slate-600 text-white px-4 py-3 rounded-full shadow-lg font-semibold">
+      📜 History
+    </button>
+  </div>
+
+  <!-- Cart Drawer -->
+  <div id="cartDrawer" class="fixed bottom-0 left-0 w-full bg-white shadow-lg rounded-t-2xl p-4 hidden z-50">
+    <h3 class="text-lg font-semibold mb-2">Your Cart</h3>
+    <div id="cartItems" class="space-y-2 max-h-60 overflow-auto"></div>
+    <div id="cartTotal" class="text-right font-bold mt-2 text-emerald-700"></div>
+    <hr class="my-3">
+    <input id="custName" placeholder="Your name" class="w-full border rounded p-2 mb-2" />
+    <input id="custPhone" placeholder="Your phone number" class="w-full border rounded p-2 mb-2" />
+    <textarea id="custAddress" placeholder="Delivery address" class="w-full border rounded p-2 mb-3 h-20"></textarea>
+    <button id="placeOrderBtn" class="w-full bg-emerald-600 text-white py-2 rounded-lg font-semibold">Place Order</button>
+    <button id="closeCart" class="w-full bg-gray-200 text-gray-700 mt-2 py-2 rounded-lg">Close</button>
+  </div>
+
+  <!-- Order History Drawer -->
+  <div id="historyDrawer" class="fixed bottom-0 left-0 w-full bg-white shadow-lg rounded-t-2xl p-4 hidden z-50">
+    <h3 class="text-lg font-semibold mb-2">Your Past Orders</h3>
+    <input id="historyPhone" placeholder="Enter your phone number" class="w-full border rounded p-2 mb-2" />
+    <button id="loadHistoryBtn" class="w-full bg-emerald-500 text-white rounded-lg py-2 mb-3">Load Orders</button>
+    <div id="historyList" class="space-y-2 max-h-72 overflow-auto"></div>
+    <button id="closeHistory" class="w-full bg-gray-200 text-gray-700 mt-2 py-2 rounded-lg">Close</button>
+  </div>
+
+  <script>
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
+      authDomain: "vendor-pos.firebaseapp.com",
+      projectId: "vendor-pos",
+      storageBucket: "vendor-pos.firebasestorage.app",
+      messagingSenderId: "729715567147",
+      appId: "1:729715567147:web:2b04c4ff14fd09daa7186e"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Elements
+    const vendorShop = document.getElementById('vendorShop');
+    const productList = document.getElementById('productList');
+    const cartDrawer = document.getElementById('cartDrawer');
+    const cartToggle = document.getElementById('cartToggle');
+    const cartItems = document.getElementById('cartItems');
+    const cartCount = document.getElementById('cartCount');
+    const cartTotal = document.getElementById('cartTotal');
+    const custName = document.getElementById('custName');
+    const custPhone = document.getElementById('custPhone');
+    const custAddress = document.getElementById('custAddress');
+    const placeOrderBtn = document.getElementById('placeOrderBtn');
+    const closeCart = document.getElementById('closeCart');
+    const historyBtn = document.getElementById('historyBtn');
+    const historyDrawer = document.getElementById('historyDrawer');
+    const closeHistory = document.getElementById('closeHistory');
+    const historyPhone = document.getElementById('historyPhone');
+    const loadHistoryBtn = document.getElementById('loadHistoryBtn');
+    const historyList = document.getElementById('historyList');
+
+    let cart = [];
+    const params = new URLSearchParams(window.location.search);
+    const vendorId = params.get('vendor_id');
+
+    if (!vendorId) {
+      vendorShop.textContent = "Invalid Vendor Link!";
+      throw new Error("Missing vendor_id parameter");
+    }
+
+    async function loadVendor() {
+      const vdoc = await db.collection('vendors').doc(vendorId).get();
+      vendorShop.textContent = vdoc.exists ? vdoc.data().shopName : "Vendor Shop";
+
+      const snap = await db.collection('vendors').doc(vendorId).collection('products').get();
+      if (snap.empty) {
+        productList.innerHTML = '<div class="text-center text-gray-500">No products available.</div>';
+        return;
+      }
+
+      snap.forEach(doc => {
+        const p = doc.data();
+        if (p.deleted) return;
+
+        const div = document.createElement('div');
+        div.className = 'flex items-center justify-between bg-white rounded-lg shadow p-2 mb-2';
+        div.innerHTML = `
+          <div class="flex-1">
+            <div class="font-semibold">${p.name}</div>
+            <div class="text-sm text-gray-600">₹${p.price}/${p.unit}</div>
+          </div>
+          <div class="flex items-center gap-1">
+            <select class="border rounded p-1 text-sm qtySelect">
+              <option value="0.25">250g</option>
+              <option value="0.5">500g</option>
+              <option value="1">1kg</option>
+              <option value="custom">Custom</option>
+            </select>
+            <input type="number" step="0.01" min="0.01" value="1" class="border rounded p-1 w-16 text-sm qtyInput hidden" />
+            <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm addBtn">Add</button>
+          </div>
+        `;
+
+        const select = div.querySelector('.qtySelect');
+        const input = div.querySelector('.qtyInput');
+        const addBtn = div.querySelector('.addBtn');
+
+        select.onchange = () => {
+          if (select.value === "custom") input.classList.remove('hidden');
+          else input.classList.add('hidden');
+        };
+
+        addBtn.onclick = () => {
+          let qty = select.value === "custom" ? parseFloat(input.value) : parseFloat(select.value);
+          if (isNaN(qty) || qty <= 0) qty = 1;
+          cart.push({ name: p.name, price: p.price, unit: p.unit, qty });
+          refreshCart();
+        };
+
+        productList.appendChild(div);
+      });
+    }
+
+    function refreshCart() {
+      cartItems.innerHTML = '';
+      let total = 0;
+      cart.forEach(it => {
+        const lineTotal = it.qty * it.price;
+        total += lineTotal;
+        const item = document.createElement('div');
+        item.className = 'flex justify-between items-center border-b pb-1';
+        item.innerHTML = `<div>${it.name} (${it.qty} ${it.unit})</div><div>₹${lineTotal.toFixed(2)}</div>`;
+        cartItems.appendChild(item);
+      });
+      cartCount.textContent = cart.length;
+      cartTotal.textContent = `Total: ₹${total.toFixed(2)}`;
+      if (cart.length > 0) cartToggle.classList.remove('hidden');
+    }
+
+    cartToggle.onclick = () => cartDrawer.classList.toggle('hidden');
+    closeCart.onclick = () => cartDrawer.classList.add('hidden');
+
+    // 🔹 Place Order
+    placeOrderBtn.onclick = async () => {
+      const name = custName.value.trim();
+      const phone = custPhone.value.trim();
+      const address = custAddress.value.trim();
+      if (!name || !phone || !address) return alert("Please fill name, phone, and address.");
+      if (cart.length === 0) return alert("Cart is empty!");
+
+      const total = cart.reduce((sum, i) => sum + i.qty * i.price, 0);
+      await db.collection('vendors').doc(vendorId).collection('orders').add({
+        customerName: name,
+        phone,
+        address,
+        items: cart,
+        total,
+        status: "Pending",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      alert("✅ Order placed successfully!");
+      cart = [];
+      refreshCart();
+      cartDrawer.classList.add('hidden');
+    };
+
+    // 🔹 Order History
+    historyBtn.onclick = () => historyDrawer.classList.toggle('hidden');
+    closeHistory.onclick = () => historyDrawer.classList.add('hidden');
+
+    loadHistoryBtn.onclick = async () => {
+      const phone = historyPhone.value.trim();
+      if (!phone) return alert("Enter phone number to view orders.");
+      const snap = await db.collection('vendors').doc(vendorId).collection('orders')
+        .where('phone', '==', phone).orderBy('createdAt', 'desc').get();
+
+      historyList.innerHTML = '';
+      if (snap.empty) {
+        historyList.innerHTML = '<div class="text-gray-500 text-center">No past orders found.</div>';
+        return;
+      }
+
+      snap.forEach(doc => {
+        const d = doc.data();
+        const items = d.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+        const div = document.createElement('div');
+        div.className = 'border rounded p-3 bg-white shadow-sm';
+        div.innerHTML = `
+          <div class="font-semibold mb-1">${d.customerName}</div>
+          <div class="text-sm text-gray-600 mb-1">${items}</div>
+          <div class="text-right font-semibold text-emerald-700">₹${d.total}</div>
+          <div class="text-xs text-gray-500 mt-1">Status: ${d.status}</div>
+          <div class="text-xs text-gray-400">${d.address || ''}</div>
+        `;
+        historyList.appendChild(div);
+      });
+    };
+
+    loadVendor();
+  </script>
+</body>
+</html>
