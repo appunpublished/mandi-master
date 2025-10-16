@@ -292,6 +292,16 @@
 
   const discountValueEl = $('discountValue'), discountTypeEl = $('discountType'), grandTotalBox = $('grandTotalBox');
 
+  const tabOrders = $('tabOrders');
+  const viewOrders = $('view-orders');
+  const ordersList = $('ordersList');
+  const shareLinkBtn = $('shareLinkBtn');
+  
+  tabOrders.onclick = () => show('orders');
+  
+
+
+
   // UTIL
   const now = () => Date.now();
   const uidGen = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
@@ -361,11 +371,12 @@
 
   // ---------- TABS ----------
   function show(tab){
-    viewProducts.classList.add('hidden'); viewSales.classList.add('hidden'); viewHistory.classList.add('hidden');
-    tabProducts.classList.remove('bg-emerald-200'); tabSales.classList.remove('bg-emerald-200'); tabHistory.classList.remove('bg-emerald-200');
+    [viewProducts, viewSales, viewHistory, viewOrders].forEach(v => v.classList.add('hidden'));
+    [tabProducts, tabSales, tabHistory, tabOrders].forEach(b => b.classList.remove('bg-emerald-200'));
     if(tab==='products'){ viewProducts.classList.remove('hidden'); tabProducts.classList.add('bg-emerald-200'); }
     if(tab==='sales'){ viewSales.classList.remove('hidden'); tabSales.classList.add('bg-emerald-200'); }
     if(tab==='history'){ viewHistory.classList.remove('hidden'); tabHistory.classList.add('bg-emerald-200'); }
+    if(tab==='orders'){ viewOrders.classList.remove('hidden'); tabOrders.classList.add('bg-emerald-200'); loadOrders(); }
   }
   tabProducts.onclick=()=>show('products'); tabSales.onclick=()=>show('sales'); tabHistory.onclick=()=>show('history');
   show('products');
@@ -1317,24 +1328,91 @@
 
 
 // -------- BURGER MENU TOGGLE --------
+// const menuToggle = document.getElementById('menuToggle');
+// const closeMenu = document.getElementById('closeMenu');
+// const sideMenu = document.getElementById('sideMenu');
+
+// menuToggle.addEventListener('click', () => {
+//   sideMenu.classList.remove('translate-x-full');
+// });
+
+// closeMenu.addEventListener('click', () => {
+//   sideMenu.classList.add('translate-x-full');
+// });
+
+// // Optional: close when clicking outside
+// window.addEventListener('click', (e) => {
+//   if (!sideMenu.contains(e.target) && !menuToggle.contains(e.target)) {
+//     sideMenu.classList.add('translate-x-full');
+//   }
+// });
+
+
+// ---------- HAMBURGER MENU LOGIC ----------
 const menuToggle = document.getElementById('menuToggle');
 const closeMenu = document.getElementById('closeMenu');
 const sideMenu = document.getElementById('sideMenu');
 
-menuToggle.addEventListener('click', () => {
+// open menu
+menuToggle?.addEventListener('click', () => {
   sideMenu.classList.remove('translate-x-full');
+  sideMenu.classList.add('translate-x-0');
 });
 
-closeMenu.addEventListener('click', () => {
+// close menu
+closeMenu?.addEventListener('click', () => {
   sideMenu.classList.add('translate-x-full');
+  sideMenu.classList.remove('translate-x-0');
 });
 
-// Optional: close when clicking outside
-window.addEventListener('click', (e) => {
+// also close menu when clicking outside (optional)
+document.addEventListener('click', (e) => {
   if (!sideMenu.contains(e.target) && !menuToggle.contains(e.target)) {
     sideMenu.classList.add('translate-x-full');
+    sideMenu.classList.remove('translate-x-0');
   }
 });
+
+
+//---------------Share QR Code-----------------
+
+shareLinkBtn.onclick = () => {
+  if(!currentUID) return alert("Login first");
+  const link = `${window.location.origin}/vendor.html?vendor_id=${currentUID}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
+  const modalHtml = `
+    <div class="modal-backdrop" id="qrModal">
+      <div class="bg-white rounded-lg p-4 text-center max-w-sm w-full shadow">
+        <h3 class="font-semibold mb-2">Share this Link / QR</h3>
+        <img src="${qrUrl}" class="mx-auto mb-3" />
+        <input type="text" readonly class="w-full border rounded p-2 mb-2" value="${link}">
+        <button class="big-btn bg-sky-500 text-white" onclick="navigator.clipboard.writeText('${link}')">Copy Link</button>
+        <button class="big-btn bg-slate-300 mt-2" onclick="document.getElementById('qrModal').remove()">Close</button>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+};
+
+
+//------Load customer Order ---------------------
+
+async function loadOrders(){
+  if(!currentUID) return;
+  const snap = await db.collection('vendors').doc(currentUID).collection('orders').orderBy('createdAt','desc').get();
+  ordersList.innerHTML = '';
+  if(snap.empty){ ordersList.innerHTML = '<div class="muted">No customer orders yet</div>'; return; }
+  snap.forEach(doc=>{
+    const d = doc.data();
+    const items = d.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+    ordersList.innerHTML += `
+      <div class="border rounded p-3 bg-white">
+        <div><b>${d.customerName || 'Customer'}</b> — ${d.phone || ''}</div>
+        <div class="small muted">${items}</div>
+        <div class="text-right font-semibold mt-1">₹ ${d.total}</div>
+        <div class="text-xs muted">${d.status || 'Pending'}</div>
+      </div>`;
+  });
+}
 
 
 

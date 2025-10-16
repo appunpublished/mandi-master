@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Vendor Storefront</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+  <div class="max-w-lg mx-auto">
+    <div id="vendorShop" class="text-center text-2xl font-bold mb-3 text-emerald-700">Loading vendor...</div>
+
+    <div id="productGrid" class="grid grid-cols-2 gap-4 mb-6"></div>
+
+    <div id="cartArea" class="hidden bg-white rounded-lg shadow p-4 mb-6">
+      <h3 class="font-semibold text-lg mb-2">Your Cart</h3>
+      <div id="cartList" class="space-y-2 mb-2"></div>
+      <div id="cartTotal" class="text-right font-semibold text-emerald-700"></div>
+    </div>
+
+    <div id="customerForm" class="bg-white rounded-lg shadow p-4">
+      <input id="custName" placeholder="Your name" class="w-full border rounded p-2 mb-2" />
+      <input id="custPhone" placeholder="Your phone number" class="w-full border rounded p-2 mb-3" />
+      <button id="placeOrderBtn" class="w-full bg-emerald-600 text-white font-semibold rounded-lg p-3">Place Order</button>
+    </div>
+
+    <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 bg-black text-white px-4 py-2 rounded hidden"></div>
+  </div>
+
+  <script>
+    // 🔹 Firebase Config (use same one as your function.js)
+    const firebaseConfig = {
+      apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
+      authDomain: "vendor-pos.firebaseapp.com",
+      projectId: "vendor-pos",
+      storageBucket: "vendor-pos.firebasestorage.app",
+      messagingSenderId: "729715567147",
+      appId: "1:729715567147:web:2b04c4ff14fd09daa7186e"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // 🔹 Elements
+    const vendorShop = document.getElementById('vendorShop');
+    const productGrid = document.getElementById('productGrid');
+    const cartArea = document.getElementById('cartArea');
+    const cartList = document.getElementById('cartList');
+    const cartTotal = document.getElementById('cartTotal');
+    const placeOrderBtn = document.getElementById('placeOrderBtn');
+    const custName = document.getElementById('custName');
+    const custPhone = document.getElementById('custPhone');
+    const toast = document.getElementById('toast');
+
+    let cart = [];
+    let vendorId = null;
+
+    // 🔹 Helper: Toast
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.style.display = 'block';
+      setTimeout(()=> toast.style.display='none', 2500);
+    }
+
+    // 🔹 Get Vendor ID from URL
+    const params = new URLSearchParams(window.location.search);
+    vendorId = params.get('vendor_id');
+    if(!vendorId){
+      vendorShop.textContent = 'Invalid vendor link!';
+      productGrid.innerHTML = '<div class="col-span-2 text-center text-gray-500">No vendor ID in link.</div>';
+      throw new Error("Missing vendor_id parameter");
+    }
+
+    // 🔹 Load vendor + products
+    async function loadVendorProducts(){
+      try {
+        const vendDoc = await db.collection('vendors').doc(vendorId).get();
+        if(!vendDoc.exists){
+          vendorShop.textContent = 'Vendor not found';
+          return;
+        }
+        vendorShop.textContent = vendDoc.data().shopName || 'Vendor Shop';
+
+        const prodsSnap = await db.collection('vendors').doc(vendorId).collection('products').get();
+        if(prodsSnap.empty){
+          productGrid.innerHTML = '<div class="col-span-2 text-center text-gray-500">No products available.</div>';
+          return;
+        }
+
+        productGrid.innerHTML = '';
+        prodsSnap.forEach(doc=>{
+          const p = doc.data();
+          if(p.deleted) return;
+
+          const card = document.createElement('div');
+          card.className = 'bg-white border rounded-lg shadow-sm p-2 flex flex-col items-center text-center';
+          card.innerHTML = `
+            <img src="${p.imageURL || ''}" onerror="this.src='https://via.placeholder.com/100'" class="w-full h-32 object-cover rounded mb-2" />
+            <div class="font-semibold">${p.name}</div>
+            <div class="text-sm text-gray-500 mb-2">₹${p.price} / ${p.unit}</div>
+            <input type="number" min="1" value="1" class="w-16 border rounded p-1 text-center mb-2" />
+            <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm">Add</button>
+          `;
+          const qtyInput = card.querySelector('input');
+          card.querySelector('button').onclick = () => {
+            const qty = Number(qtyInput.value) || 1;
+            cart.push({ name: p.name, price: p.price, qty, unit: p.unit });
+            refreshCart();
+            showToast(`${p.name} added to cart`);
+          };
+          productGrid.appendChild(card);
+        });
+      } catch(err){
+        console.error(err);
+        showToast('Error loading vendor');
+      }
+    }
+
+    // 🔹 Cart UI
+    function refreshCart(){
+      cartList.innerHTML = '';
+      if(cart.length === 0){ cartArea.classList.add('hidden'); return; }
+      cartArea.classList.remove('hidden');
+      let total = 0;
+      cart.forEach((it, idx)=>{
+        total += it.qty * it.price;
+        const div = document.createElement('div');
+        div.className = 'flex justify-between items-center border-b pb-1';
+        div.innerHTML = `<div>${it.name} (${it.qty} ${it.unit})</div>
+                         <div>₹${(it.qty*it.price).toFixed(2)}</div>`;
+        cartList.appendChild(div);
+      });
+      cartTotal.textContent = `Total: ₹${total.toFixed(2)}`;
+    }
+
+    // 🔹 Place Order
+    placeOrderBtn.onclick = async () => {
+      const name = custName.value.trim();
+      const phone = custPhone.value.trim();
+      if(!name || !phone){ showToast("Please enter your name and phone."); return; }
+      if(cart.length === 0){ showToast("Your cart is empty!"); return; }
+
+      const total = cart.reduce((sum,i)=> sum + i.qty * i.price, 0);
+      const order = {
+        customerName: name,
+        phone,
+        items: cart,
+        total,
+        status: 'Pending',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      try {
+        await db.collection('vendors').doc(vendorId).collection('orders').add(order);
+        showToast("✅ Order placed successfully!");
+        cart = [];
+        refreshCart();
+        custName.value = '';
+        custPhone.value = '';
+      } catch(err){
+        console.error(err);
+        showToast("Error placing order. Check console.");
+      }
+    };
+
+    loadVendorProducts();
+  </script>
+</body>
+</html>

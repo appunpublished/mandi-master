@@ -121,6 +121,8 @@
     <button id="pushBtn" class="w-full big-btn bg-amber-300 text-white" data-i18n="btn_push">⬆️ Push</button>
     <button id="pullBtn" class="w-full big-btn bg-sky-500 text-white" data-i18n="btn_pull">⬇️ Pull</button>
     <button id="langToggle" class="w-full big-btn bg-indigo-100" title="Toggle language">🌐 हिंदी</button>
+    <button id="shareLinkBtn" class="w-full big-btn bg-emerald-500 text-white">🔗 Share Store QR/Link</button>
+
     <button id="logoutBtn" class="w-full big-btn bg-red-500 text-white" data-i18n="btn_logout">Logout</button>
   </div>
 </div>
@@ -130,6 +132,7 @@
       <button id="tabProducts" class="flex-1 big-btn bg-emerald-100" data-i18n="tab_products">Products</button>
       <button id="tabSales" class="flex-1 big-btn bg-slate-100" data-i18n="tab_sales">Sales</button>
       <button id="tabHistory" class="flex-1 big-btn bg-slate-100" data-i18n="tab_history">History</button>
+      <button id="tabOrders" class="flex-1 big-btn bg-slate-100">Orders</button>
     </nav>
 
     <main class="bg-white rounded-xl p-4 shadow">
@@ -227,6 +230,12 @@
 
         <div id="historyList" class="space-y-2 max-h-72 overflow-auto"></div>
       </section>
+
+      <section id="view-orders" class="hidden">
+        <h3 class="font-semibold mb-2">Customer Orders</h3>
+        <div id="ordersList" class="space-y-2 max-h-72 overflow-auto"></div>
+      </section>
+
 
     </main>
   </div>
