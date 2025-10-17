@@ -255,6 +255,11 @@
   function loadLS(key){ try{ return JSON.parse(localStorage.getItem(key) || '[]'); } catch(e){ return []; } }
   function saveLS(key,val){ localStorage.setItem(key, JSON.stringify(val)); }
 
+
+
+
+
+
   // App state
   let currentUser = null;
   let currentUID = null;
@@ -296,6 +301,27 @@
   const viewOrders = $('view-orders');
   const ordersList = $('ordersList');
   const shareLinkBtn = $('shareLinkBtn');
+
+  const tabStorefront = $('tabStorefront');
+  const viewStorefront = $('view-storefront');
+  const storeWelcome = $('storeWelcome');
+  const storeThemeColor = $('storeThemeColor');
+  const storeLogoUpload = $('storeLogoUpload');
+  const storeBannerUpload = $('storeBannerUpload');
+  const logoPreview = $('logoPreview').querySelector('img');
+  const bannerPreview = $('bannerPreview').querySelector('img');
+  const saveStorefrontBtn = $('saveStorefrontBtn');
+  
+// 🧠 Cloudinary Config
+const CLOUDINARY_CLOUD_NAME = "dab2fpstj";
+const CLOUDINARY_UPLOAD_PRESET = "unsigned_vendor_upload";
+
+
+
+
+  let vendorCustomization = {};
+
+
   
   tabOrders.onclick = () => show('orders');
   
@@ -440,15 +466,205 @@ regShop.addEventListener('blur', async () => {
 
   // ---------- TABS ----------
   function show(tab){
-    [viewProducts, viewSales, viewHistory, viewOrders].forEach(v => v.classList.add('hidden'));
-    [tabProducts, tabSales, tabHistory, tabOrders].forEach(b => b.classList.remove('bg-emerald-200'));
+    [viewProducts, viewSales, viewHistory, viewOrders, viewStorefront].forEach(v => v.classList.add('hidden'));
+    [tabProducts, tabSales, tabHistory, tabOrders, tabStorefront].forEach(b => b.classList.remove('bg-emerald-200'));
     if(tab==='products'){ viewProducts.classList.remove('hidden'); tabProducts.classList.add('bg-emerald-200'); }
     if(tab==='sales'){ viewSales.classList.remove('hidden'); tabSales.classList.add('bg-emerald-200'); }
     if(tab==='history'){ viewHistory.classList.remove('hidden'); tabHistory.classList.add('bg-emerald-200'); }
     if(tab==='orders'){ viewOrders.classList.remove('hidden'); tabOrders.classList.add('bg-emerald-200'); listenToOrders(); }
+    if (tab === 'storefront') {
+      viewStorefront.classList.remove('hidden');
+      tabStorefront.classList.add('bg-emerald-200');
+      loadCustomizationUI(); // Load existing settings into the form
+  }
   }
   tabProducts.onclick=()=>show('products'); tabSales.onclick=()=>show('sales'); tabHistory.onclick=()=>show('history');
   show('products');
+
+  tabStorefront.onclick = () => show('storefront');
+
+
+
+//Store Front View
+
+async function loadCustomizationUI() {
+  const vendorDoc = await db.collection('vendors').doc(currentUID).get();
+  if (vendorDoc.exists && vendorDoc.data().customization) {
+      vendorCustomization = vendorDoc.data().customization;
+      if(storeWelcome)storeWelcome.value = vendorCustomization.welcomeMessage || '';
+      if(storeThemeColor)storeThemeColor.value = vendorCustomization.themeColor || '#059669';
+      if (vendorCustomization.logoUrl) {
+          logoPreview.src = vendorCustomization.logoUrl;
+          logoPreview.classList.remove('hidden');
+      }
+      if (vendorCustomization.bannerUrl) {
+          bannerPreview.src = vendorCustomization.bannerUrl;
+          bannerPreview.classList.remove('hidden');
+      }
+  }
+}
+
+// // Helper to upload a file and get the URL
+// async function uploadFileAndGetURL(file, path) {
+//   const storageRef = storage.ref().child(path);
+//   await storageRef.put(file);
+//   return await storageRef.getDownloadURL();
+// }
+
+// // Save button logic
+// saveStorefrontBtn.onclick = async () => {
+//   if (!currentUID) return alert("Not logged in");
+//   saveStorefrontBtn.textContent = "Saving...";
+//   saveStorefrontBtn.disabled = true;
+
+//   try {
+//       const updates = {
+//           welcomeMessage: storeWelcome.value.trim(),
+//           themeColor: storeThemeColor.value,
+//       };
+
+//       // If a new logo is selected, upload it
+//       if (storeLogoUpload.files[0]) {
+//           const logoFile = storeLogoUpload.files[0];
+//           const logoPath = `vendors/${currentUID}/customization/logo_${Date.now()}`;
+//           updates.logoUrl = await uploadFileAndGetURL(logoFile, logoPath);
+//       }
+
+//       // If a new banner is selected, upload it
+//       if (storeBannerUpload.files[0]) {
+//           const bannerFile = storeBannerUpload.files[0];
+//           const bannerPath = `vendors/${currentUID}/customization/banner_${Date.now()}`;
+//           updates.bannerUrl = await uploadFileAndGetURL(bannerFile, bannerPath);
+//       }
+
+//       // Save the data to Firestore
+//       await db.collection('vendors').doc(currentUID).set({
+//           customization: { ...vendorCustomization, ...updates }
+//       }, { merge: true });
+
+//       showToast("Storefront updated successfully!");
+//       await loadCustomizationUI(); // Refresh UI with new data
+
+//   } catch (error) {
+//       console.error("Error saving customization: ", error);
+//       alert("Failed to save. Please try again.");
+//   } finally {
+//       saveStorefrontBtn.textContent = "Save Customizations";
+//       saveStorefrontBtn.disabled = false;
+//   }
+// };
+
+
+
+
+//Cloudinary
+// 📸 Cloudinary upload helper
+async function uploadToCloudinary(file, folder) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  formData.append("folder", folder);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  const data = await res.json();
+  if (!data.secure_url) throw new Error("Upload failed");
+  return data.secure_url;
+}
+
+// 🎨 Store customization logic
+const logoInput = document.getElementById("logoUpload");
+const bannerInput = document.getElementById("bannerUpload");
+// const logoPreview = document.getElementById("logoPreview");
+// const bannerPreview = document.getElementById("bannerPreview");
+const descInput = document.getElementById("storeDesc");
+const colorPicker = document.getElementById("themeColor");
+const saveBrandingBtn = document.getElementById("saveBranding");
+
+// 🔹 Preview images on file select
+function previewImage(input, previewEl) {
+  const file = input.files[0];
+  if (!file || !previewEl) return; 
+  if (file) {
+    previewEl.src = URL.createObjectURL(file);
+    previewEl.classList.remove("hidden");
+  }
+}
+if (logoInput) logoInput.addEventListener("change", () => previewImage(logoInput, logoPreview));
+if (bannerInput) bannerInput.addEventListener("change", () => previewImage(bannerInput, bannerPreview));
+
+// 🧩 Save customization
+if (saveBrandingBtn) {
+  saveBrandingBtn.addEventListener("click", async () => {
+    if (!currentUID) return alert("Please log in first");
+
+    saveBrandingBtn.textContent = "Saving...";
+    saveBrandingBtn.disabled = true;
+
+    try {
+      let logoUrl = null;
+      let bannerUrl = null;
+
+      if (logoInput.files.length > 0)
+        logoUrl = await uploadToCloudinary(logoInput.files[0], "vendor-logos");
+      if (bannerInput.files.length > 0)
+        bannerUrl = await uploadToCloudinary(bannerInput.files[0], "vendor-banners");
+
+      const description = descInput.value.trim();
+      const themeColor = colorPicker.value || "#f5f5f5";
+
+      await db.collection("vendors").doc(currentUID).set(
+        {
+          customization: {
+            ...(logoUrl && { logoUrl }),
+            ...(bannerUrl && { bannerUrl }),
+            ...(description && { description }),
+            ...(themeColor && { themeColor }),
+          },
+        },
+        { merge: true }
+      );
+
+      alert("✅ Store customization saved successfully!");
+      saveBrandingBtn.textContent = "Saved ✓";
+      setTimeout(() => {
+        saveBrandingBtn.textContent = "Save Customization";
+        saveBrandingBtn.disabled = false;
+      }, 1500);
+    } catch (err) {
+      console.error("Error saving customization:", err);
+      alert("Error saving customization. Check console for details.");
+      saveBrandingBtn.textContent = "Save Customization";
+      saveBrandingBtn.disabled = false;
+    }
+  });
+}
+
+
+
+async function loadVendorCustomization() {
+  if (!currentUID) return;
+  const doc = await db.collection("vendors").doc(currentUID).get();
+  if (!doc.exists) return;
+
+  const data = doc.data().customization || {};
+  if (data.logoUrl) {
+    logoPreview.src = data.logoUrl;
+    logoPreview.classList.remove("hidden");
+  }
+  if (data.bannerUrl) {
+    bannerPreview.src = data.bannerUrl;
+    bannerPreview.classList.remove("hidden");
+  }
+  if (data.description) descInput.value = data.description;
+  if (data.themeColor) colorPicker.value = data.themeColor;
+}
+loadVendorCustomization();
+
+
+
 
   // ---------- IMAGE / SHARED IMAGES LOGIC ----------
   let sharedImages = [];

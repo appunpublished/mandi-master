@@ -8,44 +8,65 @@
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 </head>
-<body class="bg-gray-50 min-h-screen font-[Inter]">
+<body class="bg-gray-100 min-h-screen font-[Inter]">
 
-  <!-- Header -->
-  <div class="bg-emerald-600 text-white text-center p-4 text-xl font-semibold" id="vendorShop">Loading...</div>
+  <div class="max-w-3xl mx-auto bg-white min-h-screen shadow-lg">
 
-  <!-- Product List -->
-  <div class="max-w-xl mx-auto p-4" id="productList"></div>
+    <header id="vendorHeader" class="bg-emerald-600 h-48 flex items-center justify-center">
+      <h1 id="vendorShop" class="text-white text-4xl font-bold drop-shadow-md">Loading...</h1>
+    </header>
 
-  <!-- Floating Buttons -->
-  <div class="fixed bottom-5 right-5 flex flex-col gap-2">
-    <button id="cartToggle" class="bg-amber-500 text-white px-4 py-3 rounded-full shadow-lg font-semibold hidden">
-      🛒 <span id="cartCount">0</span>
+    <div class="p-6">
+      <div class="flex items-center space-x-4 mb-4">
+        <img id="vendorLogo" src="https://via.placeholder.com/80" alt="Shop Logo" class="w-20 h-20 rounded-full border-4 border-white -mt-16 shadow-md object-cover">
+        <div>
+          <h2 id="shopNameSub" class="text-2xl font-semibold text-gray-800"></h2>
+          <p id="vendorWelcomeMessage" class="text-gray-600 mt-1">Welcome to our store! Fresh products delivered to you.</p>
+        </div>
+      </div>
+
+      <hr class="my-4">
+
+      <h3 class="text-xl font-bold text-gray-800 mb-4">Our Products</h3>
+      
+      <div id="productList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        </div>
+    </div>
+
+  </div>
+
+  <div class="fixed bottom-5 right-5 flex flex-col items-center gap-3 z-40">
+    <button id="historyBtn" class="bg-slate-600 hover:bg-slate-700 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transition-transform transform hover:scale-110">
+      <span class="text-2xl">📜</span>
     </button>
-    <button id="historyBtn" class="bg-slate-600 text-white px-4 py-3 rounded-full shadow-lg font-semibold">
-      📜 History
+    <button id="cartToggle" class="bg-amber-500 hover:bg-amber-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transition-transform transform hover:scale-110 hidden relative">
+      <span class="text-2xl">🛒</span>
+      <span id="cartCount" class="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">0</span>
     </button>
   </div>
 
-  <!-- Cart Drawer -->
-  <div id="cartDrawer" class="fixed bottom-0 left-0 w-full bg-white shadow-lg rounded-t-2xl p-4 hidden z-50">
-    <h3 class="text-lg font-semibold mb-2">Your Cart</h3>
-    <div id="cartItems" class="space-y-2 max-h-60 overflow-auto"></div>
-    <div id="cartTotal" class="text-right font-bold mt-2 text-emerald-700"></div>
-    <hr class="my-3">
-    <input id="custName" placeholder="Your name" class="w-full border rounded p-2 mb-2" />
-    <input id="custPhone" placeholder="Your phone number" class="w-full border rounded p-2 mb-2" />
-    <textarea id="custAddress" placeholder="Delivery address" class="w-full border rounded p-2 mb-3 h-20"></textarea>
-    <button id="placeOrderBtn" class="w-full bg-emerald-600 text-white py-2 rounded-lg font-semibold">Place Order</button>
-    <button id="closeCart" class="w-full bg-gray-200 text-gray-700 mt-2 py-2 rounded-lg">Close</button>
+  <div id="cartDrawer" class="fixed inset-0 bg-black/50 hidden z-50 flex justify-end">
+    <div class="w-full max-w-md bg-white h-full shadow-lg p-6 flex flex-col">
+      <h3 class="text-2xl font-semibold mb-4 text-gray-800">Your Cart</h3>
+      <div id="cartItems" class="flex-grow space-y-3 overflow-y-auto"></div>
+      <div id="cartTotal" class="text-right font-bold text-xl my-4 text-emerald-700"></div>
+      <hr class="my-3">
+      <input id="custName" placeholder="Your name" class="w-full border rounded-lg p-3 mb-2 focus:ring-2 focus:ring-emerald-500" />
+      <input id="custPhone" placeholder="Your phone number" type="tel" class="w-full border rounded-lg p-3 mb-2 focus:ring-2 focus:ring-emerald-500" />
+      <textarea id="custAddress" placeholder="Delivery address" class="w-full border rounded-lg p-3 mb-3 h-24 focus:ring-2 focus:ring-emerald-500"></textarea>
+      <button id="placeOrderBtn" class="w-full bg-emerald-600 text-white py-3 rounded-lg font-semibold hover:bg-emerald-700 transition-colors">Place Order</button>
+      <button id="closeCart" class="w-full bg-gray-200 text-gray-700 mt-2 py-3 rounded-lg hover:bg-gray-300">Close</button>
+    </div>
   </div>
 
-  <!-- Order History Drawer -->
-  <div id="historyDrawer" class="fixed bottom-0 left-0 w-full bg-white shadow-lg rounded-t-2xl p-4 hidden z-50">
-    <h3 class="text-lg font-semibold mb-2">Your Past Orders</h3>
-    <input id="historyPhone" placeholder="Enter your phone number" class="w-full border rounded p-2 mb-2" />
-    <button id="loadHistoryBtn" class="w-full bg-emerald-500 text-white rounded-lg py-2 mb-3">Load Orders</button>
-    <div id="historyList" class="space-y-2 max-h-72 overflow-auto"></div>
-    <button id="closeHistory" class="w-full bg-gray-200 text-gray-700 mt-2 py-2 rounded-lg">Close</button>
+  <div id="historyDrawer" class="fixed inset-0 bg-black/50 hidden z-50 flex justify-end">
+     <div class="w-full max-w-md bg-white h-full shadow-lg p-6 flex flex-col">
+      <h3 class="text-2xl font-semibold mb-2 text-gray-800">Your Past Orders</h3>
+      <input id="historyPhone" placeholder="Enter your phone number" type="tel" class="w-full border rounded-lg p-3 mb-2 focus:ring-2 focus:ring-emerald-500" />
+      <button id="loadHistoryBtn" class="w-full bg-emerald-500 text-white rounded-lg py-3 mb-3 font-semibold hover:bg-emerald-600">Load Orders</button>
+      <div id="historyList" class="flex-grow space-y-3 overflow-y-auto"></div>
+      <button id="closeHistory" class="w-full bg-gray-200 text-gray-700 mt-2 py-3 rounded-lg hover:bg-gray-300">Close</button>
+    </div>
   </div>
 
   <script>
@@ -95,6 +116,10 @@
           vendorSlug = pathParts.pop() || pathParts.pop(); // Handles trailing slash
         }
         
+
+
+
+        
         // Redirect logic for clean URLs like /mandi-master/vendor/<slug>
         const path = window.location.pathname.split('/').pop();
         if (path && path !== 'vendor.html' && path !== '404.html') {
@@ -122,52 +147,86 @@
         // Set shop name
         vendorShop.textContent = vendorData.shopName || "Vendor Store";
 
+
+
+        const customization = vendorData.customization || {}; // Get customization object
+
+// Set shop name
+vendorShop.textContent = vendorData.shopName || "Vendor Store";
+document.getElementById("shopNameSub").textContent = vendorData.shopName || "Vendor Store";
+
+// --- NEW: Apply customizations ---
+const themeColor = customization.themeColor || '#059669'; // Default to green
+
+// Apply banner image or color
+const vendorHeader = document.getElementById('vendorHeader');
+if (customization.bannerUrl) {
+    vendorHeader.style.backgroundImage = `url(${customization.bannerUrl})`;
+    vendorHeader.style.backgroundSize = 'cover';
+    vendorHeader.style.backgroundPosition = 'center';
+    vendorShop.textContent = ''; // Hide text if banner exists
+} else {
+    vendorHeader.style.backgroundColor = themeColor;
+}
+
+// Apply logo
+if (customization.logoUrl) {
+    document.getElementById('vendorLogo').src = customization.logoUrl;
+}
+
+// Apply welcome message
+if (customization.welcomeMessage) {
+    document.getElementById('vendorWelcomeMessage').textContent = customization.welcomeMessage;
+}
+
+// Apply theme color to key elements
+document.querySelectorAll('.addBtn, #placeOrderBtn, #loadHistoryBtn').forEach(btn => {
+    btn.style.backgroundColor = themeColor;
+});
+// --- End of new customization logic ---
+
         // Load products for this vendor
         const productsSnap = await db.collection('vendors').doc(vendorId).collection('products').get();
-        if (productsSnap.empty) {
-          productList.innerHTML = '<div class="text-center text-gray-500">No products available.</div>';
-        } else {
-          productsSnap.forEach(doc => {
-            const p = doc.data();
-            if (p.deleted) return;
+        // ... inside the initializePage async function, after getting productsSnap ...
+if (productsSnap.empty) {
+    productList.innerHTML = '<div class="text-center text-gray-500 col-span-full">No products available.</div>';
+} else {
+    productsSnap.forEach(doc => {
+        const p = doc.data();
+        if (p.deleted) return;
 
-            const div = document.createElement('div');
-            div.className = 'flex items-center justify-between bg-white rounded-lg shadow p-2 mb-2';
-            div.innerHTML = `
-              <div class="flex-1">
-                <div class="font-semibold">${p.name}</div>
-                <div class="text-sm text-gray-600">₹${p.price}/${p.unit}</div>
-              </div>
-              <div class="flex items-center gap-1">
-                <select class="border rounded p-1 text-sm qtySelect">
-                  <option value="0.25">250g</option>
-                  <option value="0.5">500g</option>
-                  <option value="1">1kg</option>
-                  <option value="custom">Custom</option>
-                </select>
-                <input type="number" step="0.01" min="0.01" value="1" class="border rounded p-1 w-16 text-sm qtyInput hidden" />
-                <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm addBtn">Add</button>
-              </div>
-            `;
+        const div = document.createElement('div');
+        // This is the new Product Card structure
+        div.className = 'bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden flex flex-col';
+        div.innerHTML = `
+            <img src="${p.imageURL || 'https://via.placeholder.com/300x200'}" alt="${p.name}" class="w-full h-40 object-cover">
+            <div class="p-4 flex-grow">
+              <h4 class="text-lg font-semibold text-gray-800">${p.name}</h4>
+              <p class="text-emerald-600 font-bold text-xl my-1">₹${p.price}<span class="text-sm font-normal text-gray-500"> / ${p.unit}</span></p>
+            </div>
+            <div class="p-4 bg-gray-50 border-t flex items-center gap-2">
+              <input type="number" step="0.1" min="0.1" value="1" class="border rounded-lg p-2 w-20 text-center qtyInput" />
+              <span class="text-gray-600 unit-label">${p.unit}</span>
+              <button class="flex-grow bg-emerald-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-emerald-600 transition-colors addBtn">Add</button>
+            </div>
+        `;
 
-            const select = div.querySelector('.qtySelect');
-            const input = div.querySelector('.qtyInput');
-            const addBtn = div.querySelector('.addBtn');
+        const input = div.querySelector('.qtyInput');
+        const addBtn = div.querySelector('.addBtn');
 
-            select.onchange = () => {
-              input.classList.toggle('hidden', select.value !== "custom");
-            };
+        addBtn.onclick = () => {
+            let qty = parseFloat(input.value);
+            if (isNaN(qty) || qty <= 0) return;
+            cart.push({ id: p.id, name: p.name, price: p.price, unit: p.unit, qty });
+            refreshCart();
+            // Add a small visual feedback
+            addBtn.textContent = 'Added!';
+            setTimeout(() => { addBtn.textContent = 'Add'; }, 1000);
+        };
 
-            addBtn.onclick = () => {
-              let qty = select.value === "custom" ? parseFloat(input.value) : parseFloat(select.value);
-              if (isNaN(qty) || qty <= 0) return; // Basic validation
-              cart.push({ name: p.name, price: p.price, unit: p.unit, qty });
-              refreshCart();
-            };
-
-            productList.appendChild(div);
-          });
-        }
+        productList.appendChild(div);
+    });
+}
         
         // 3. Setup all event listeners now that we have the vendorId
         setupEventListeners(vendorId);
@@ -263,6 +322,11 @@
         }
       };
     }
+
+
+
+
+    
   </script>
 </body>
 </html>
