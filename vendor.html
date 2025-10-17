@@ -82,8 +82,69 @@
     const historyList = document.getElementById('historyList');
 
     let cart = [];
-    const params = new URLSearchParams(window.location.search);
-    const vendorId = params.get('vendor_id');
+ // 🏪 Identify vendor from slug in URL
+const params = new URLSearchParams(window.location.search);
+let vendorSlug = params.get("vendor");
+
+// fallback: if opened as /mandi-master/<slug>
+if (!vendorSlug) {
+  const pathParts = window.location.pathname.split('/');
+  vendorSlug = pathParts[pathParts.length - 1];
+}
+
+// Validate slug
+if (!vendorSlug) {
+  document.body.innerHTML = "<h3 class='text-center mt-20 text-red-600 font-semibold'>Vendor not found</h3>";
+  throw new Error("No vendor slug provided.");
+}
+
+// Fetch vendor info from Firestore using slug
+const vendorSnap = await db.collection("vendors").where("slug", "==", vendorSlug).limit(1).get();
+
+
+
+// This async function will run after we confirm we have a slug.
+async function initializeVendorPage() {
+      try {
+        const vendorSnap = await db.collection("vendors").where("slug", "==", vendorSlug).limit(1).get();
+
+        if (vendorSnap.empty) {
+          document.body.innerHTML = "<h3 class='text-center mt-20 text-gray-600 font-semibold'>Store not found</h3>";
+          throw new Error("Invalid vendor slug");
+        }
+
+        const vendorDoc = vendorSnap.docs[0];
+        const vendorId = vendorDoc.id;
+        const vendorData = vendorDoc.data();
+
+        document.getElementById("vendorShop").textContent = vendorData.shopName || "Vendor Store";
+        
+        // Now that we have the vendor ID, load products and other functions.
+        await loadVendorProducts(vendorId);
+        setupEventListeners(vendorId);
+
+      } catch (error) {
+        console.error("Failed to initialize vendor page:", error);
+      }
+    }
+
+
+if (vendorSnap.empty) {
+  document.body.innerHTML = "<h3 class='text-center mt-20 text-gray-600 font-semibold'>Store not found</h3>";
+  throw new Error("Invalid vendor slug");
+}
+
+// Get actual vendor document ID
+const vendorDoc = vendorSnap.docs[0];
+const vendorId = vendorDoc.id;
+const vendorData = vendorDoc.data();
+
+// Set shop name
+document.getElementById("vendorShop").textContent = vendorData.shopName || "Vendor Store";
+
+// ✅ Continue loading products and other vendor data
+loadVendorProducts(vendorId);
+
 
     if (!vendorId) {
       vendorShop.textContent = "Invalid Vendor Link!";
@@ -217,6 +278,16 @@
         historyList.appendChild(div);
       });
     };
+
+
+   
+  const path = window.location.pathname.split('/').pop();
+  if (path && path !== '404.html') {
+    window.location.href = `/mandi-master/vendor.html?vendor=${path}`;
+  }
+
+
+  initializeVendorPage();
 
     loadVendor();
   </script>

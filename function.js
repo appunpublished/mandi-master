@@ -280,7 +280,7 @@
   const historyList = $('historyList'), historyFilter = $('historyFilter');
 
   const registerBtn = $('registerBtn'), loginBtn = $('loginBtn'), regShop = $('regShop'), emailInp = $('email'), passInp = $('password');
-
+  const shopNameStatus = $('shopNameStatus');
   const sendBillArea = $('sendBillArea'), sendBillBtn = $('sendBillBtn'), custNumberEl = $('custNumber');
   const billModal = $('billModal'), billPreview = $('billPreview'), copyBillBtn = $('copyBillBtn'), closeBillBtn = $('closeBillBtn');
 
@@ -318,20 +318,54 @@
   }
 
   // ---------- AUTH ----------
-  registerBtn.onclick = async () => {
-    const shop = regShop.value.trim(); const email = emailInp.value.trim(); const pass = passInp.value;
-    if(!shop || !email || !pass) return showBilingualAlert('enter_shop_email_pass');
-    try{
+  // Replace the entire existing registerBtn.onclick function with this corrected version.
+registerBtn.onclick = async () => {
+  const shop = regShop.value.trim();
+  const email = emailInp.value.trim();
+  const pass = passInp.value;
+  if (!shop || !email || !pass) return showBilingualAlert('enter_shop_email_pass');
+
+  // 1. Generate the slug from the shop name. This will be the unique identifier.
+  const slug = shop.toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+  // 2. Perform a definitive check against the database BEFORE creating the user.
+  try {
+      const existing = await db.collection('vendors').where('slug', '==', slug).get();
+      if (!existing.empty) {
+          // If the query returns any documents, the name is taken.
+          alert("This shop name is already taken. Please choose another name.");
+          return; // Halt the registration process immediately.
+      }
+  } catch (dbError) {
+      console.error("Database error during shop name check:", dbError);
+      alert("Could not verify shop name. Please check your connection and try again.");
+      return;
+  }
+
+  // 3. If the slug is unique, proceed with creating the Firebase user.
+  try {
       const cred = await auth.createUserWithEmailAndPassword(email, pass);
       const user = cred.user;
+
+      // 4. Save the new vendor's data, including the verified unique slug.
       await db.collection('vendors').doc(user.uid).set({
-        shopName: shop,
-        email: email,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge:true });
+          shopName: shop,
+          slug: slug, // Save the generated slug
+          email: email,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      // Provide success feedback to the user.
       showBilingualAlert('registered');
-    } catch(e){ showBilingualAlert(e.message || 'Error'); }
-  };
+
+  } catch (authError) {
+      // Catch errors from the authentication process (e.g., email already in use).
+      alert(authError.message || 'An error occurred during registration.');
+  }
+};
 
   loginBtn.onclick = async () => {
     const email = emailInp.value.trim(); const pass = passInp.value;
@@ -368,6 +402,41 @@
       authWrap.classList.remove('hidden'); appWrap.classList.add('hidden');
     }
   });
+
+
+
+// ---------- REAL-TIME SHOP NAME VALIDATION ----------
+regShop.addEventListener('blur', async () => {
+  const shopName = regShop.value.trim();
+  shopNameStatus.textContent = ''; // Clear previous message
+  if (!shopName) return;
+
+  // Generate slug exactly like in the registration function
+  const slug = shopName.toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  if (!slug) return;
+
+  shopNameStatus.textContent = 'Checking...';
+  shopNameStatus.className = 'text-xs mt-1 h-4 text-slate-500';
+
+  try {
+    const existing = await db.collection('vendors').where('slug', '==', slug).limit(1).get();
+    if (existing.empty) {
+      shopNameStatus.textContent = 'Available ✅';
+      shopNameStatus.className = 'text-xs mt-1 h-4 text-emerald-600';
+    } else {
+      shopNameStatus.textContent = 'Already taken ❌';
+      shopNameStatus.className = 'text-xs mt-1 h-4 text-red-600';
+    }
+  } catch (error) {
+    console.error("Error checking shop name:", error);
+    shopNameStatus.textContent = 'Could not verify name.';
+    shopNameStatus.className = 'text-xs mt-1 h-4 text-amber-600';
+  }
+});
+
 
   // ---------- TABS ----------
   function show(tab){
@@ -1394,56 +1463,57 @@ document.addEventListener('click', (e) => {
 // };
 
 
-shareLinkBtn.onclick = () => {
+// Find and replace the existing shareLinkBtn.onclick function with this one.
+shareLinkBtn.onclick = async () => {
   if (!currentUID) return alert("Login first");
 
-  // Detect base path automatically
-  let basePath = '';
-  if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') {
-    basePath = ''; // local
-  } else {
-    basePath = '/mandi-master'; // GitHub Pages subfolder
-  }
+  try {
+    const vendorDoc = await db.collection("vendors").doc(currentUID).get();
+    if (!vendorDoc.exists) return alert("Vendor record not found!");
 
-  // Build vendor link dynamically
-  const link = `${window.location.origin}${basePath}/vendor.html?vendor_id=${currentUID}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
+    const data = vendorDoc.data();
+    const slug = data.slug;
 
-  // Avoid opening multiple modals
-  if (document.getElementById('qrModal')) document.getElementById('qrModal').remove();
+    if (!slug) return alert("Could not generate a share link for this vendor.");
 
-  // Build modal HTML
-  const modalHtml = `
-    <div class="modal-backdrop fixed inset-0 bg-black/50 flex items-center justify-center z-50" id="qrModal">
-      <div class="bg-white rounded-2xl p-5 text-center max-w-sm w-full shadow-xl animate-fadeIn">
-        <h3 class="font-semibold text-lg mb-3">Share Your Store Link</h3>
-        <img src="${qrUrl}" alt="QR Code" class="mx-auto mb-3 rounded-md shadow-sm" />
-        <input type="text" readonly class="w-full border rounded-lg p-2 mb-2 text-sm text-gray-700" value="${link}">
-        <button id="copyBtn" class="big-btn bg-sky-500 text-white rounded-lg px-4 py-2 w-full">Copy Link</button>
-        <button class="big-btn bg-slate-300 mt-2 rounded-lg px-4 py-2 w-full" onclick="document.getElementById('qrModal').remove()">Close</button>
-      </div>
-    </div>`;
+    // --- THIS IS THE KEY CHANGE ---
+    // Generate the clean, user-friendly URL instead of the query parameter one.
+    const link = `${window.location.origin}/mandi-master/vendor/${slug}`;
+    
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
 
-  document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const old = document.getElementById('qrModal');
+    if (old) old.remove();
 
-  // Copy button with confirmation
-  document.getElementById('copyBtn').onclick = async () => {
-    try {
+    const modalHtml = `
+      <div class="modal-backdrop fixed inset-0 bg-black/50 flex items-center justify-center z-50" id="qrModal">
+        <div class="bg-white rounded-2xl p-5 text-center max-w-sm w-full shadow-xl animate-fadeIn">
+          <h3 class="font-semibold text-lg mb-3">Share Your Store Link</h3>
+          <img src="${qrUrl}" alt="QR Code" class="mx-auto mb-3 rounded-md shadow-sm" />
+          <input type="text" readonly class="w-full border rounded-lg p-2 mb-2 text-sm text-gray-700" value="${link}">
+          <button id="copyBtn" class="big-btn bg-sky-500 text-white rounded-lg px-4 py-2 w-full">Copy Link</button>
+          <button class="big-btn bg-slate-300 mt-2 rounded-lg px-4 py-2 w-full" onclick="document.getElementById('qrModal').remove()">Close</button>
+        </div>
+      </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    document.getElementById('copyBtn').onclick = async () => {
       await navigator.clipboard.writeText(link);
       const btn = document.getElementById('copyBtn');
       btn.textContent = "Copied ✅";
-      btn.classList.remove("bg-sky-500");
-      btn.classList.add("bg-green-600");
+      btn.classList.replace("bg-sky-500", "bg-green-600");
       setTimeout(() => {
         btn.textContent = "Copy Link";
-        btn.classList.remove("bg-green-600");
-        btn.classList.add("bg-sky-500");
+        btn.classList.replace("bg-green-600", "bg-sky-500");
       }, 1500);
-    } catch (err) {
-      alert("Could not copy link. Please copy manually.");
-    }
-  };
+    };
+  } catch (error) {
+    console.error("Error generating share link:", error);
+    alert("An error occurred while creating the share link.");
+  }
 };
+
 
 
 
