@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Vendor Store</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen font-[Inter]">
+
+  <div class="max-w-3xl mx-auto bg-white min-h-screen shadow-lg">
+
+    <header id="vendorHeader" class="bg-emerald-600 h-48 flex items-center justify-center">
+      <h1 id="vendorShop" class="text-white text-4xl font-bold drop-shadow-md">Loading...</h1>
+    </header>
+
+    <div class="p-6">
+      <div class="flex items-center space-x-4 mb-4">
+        <img id="vendorLogo" src="https://via.placeholder.com/80" alt="Shop Logo" class="w-20 h-20 rounded-full border-4 border-white -mt-16 shadow-md object-cover">
+        <div>
+          <h2 id="shopNameSub" class="text-2xl font-semibold text-gray-800"></h2>
+          <p id="vendorWelcomeMessage" class="text-gray-600 mt-1">Welcome to our store! Fresh products delivered to you.</p>
+        </div>
+      </div>
+
+      <hr class="my-4">
+
+      <h3 class="text-xl font-bold text-gray-800 mb-4">Our Products</h3>
+      
+      <div id="productList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        </div>
+    </div>
+
+  </div>
+
+  <div class="fixed bottom-5 right-5 flex flex-col items-center gap-3 z-40">
+    <button id="historyBtn" class="bg-slate-600 hover:bg-slate-700 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transition-transform transform hover:scale-110">
+      <span class="text-2xl">📜</span>
+    </button>
+    <button id="cartToggle" class="bg-amber-500 hover:bg-amber-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transition-transform transform hover:scale-110 hidden relative">
+      <span class="text-2xl">🛒</span>
+      <span id="cartCount" class="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">0</span>
+    </button>
+  </div>
+
+  <div id="cartDrawer" class="fixed inset-0 bg-black/50 hidden z-50 flex justify-end">
+    <div class="w-full max-w-md bg-white h-full shadow-lg p-6 flex flex-col">
+      <h3 class="text-2xl font-semibold mb-4 text-gray-800">Your Cart</h3>
+      <div id="cartItems" class="flex-grow space-y-3 overflow-y-auto"></div>
+      <div id="cartTotal" class="text-right font-bold text-xl my-4 text-emerald-700"></div>
+      <hr class="my-3">
+      <input id="custName" placeholder="Your name" class="w-full border rounded-lg p-3 mb-2 focus:ring-2 focus:ring-emerald-500" />
+      <input id="custPhone" placeholder="Your phone number" type="tel" class="w-full border rounded-lg p-3 mb-2 focus:ring-2 focus:ring-emerald-500" />
+      <textarea id="custAddress" placeholder="Delivery address" class="w-full border rounded-lg p-3 mb-3 h-24 focus:ring-2 focus:ring-emerald-500"></textarea>
+      <button id="placeOrderBtn" class="w-full bg-emerald-600 text-white py-3 rounded-lg font-semibold hover:bg-emerald-700 transition-colors">Place Order</button>
+      <button id="closeCart" class="w-full bg-gray-200 text-gray-700 mt-2 py-3 rounded-lg hover:bg-gray-300">Close</button>
+    </div>
+  </div>
+
+  <div id="historyDrawer" class="fixed inset-0 bg-black/50 hidden z-50 flex justify-end">
+     <div class="w-full max-w-md bg-white h-full shadow-lg p-6 flex flex-col">
+      <h3 class="text-2xl font-semibold mb-2 text-gray-800">Your Past Orders</h3>
+      <input id="historyPhone" placeholder="Enter your phone number" type="tel" class="w-full border rounded-lg p-3 mb-2 focus:ring-2 focus:ring-emerald-500" />
+      <button id="loadHistoryBtn" class="w-full bg-emerald-500 text-white rounded-lg py-3 mb-3 font-semibold hover:bg-emerald-600">Load Orders</button>
+      <div id="historyList" class="flex-grow space-y-3 overflow-y-auto"></div>
+      <button id="closeHistory" class="w-full bg-gray-200 text-gray-700 mt-2 py-3 rounded-lg hover:bg-gray-300">Close</button>
+    </div>
+  </div>
+
+  <script>
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
+      authDomain: "vendor-pos.firebaseapp.com",
+      projectId: "vendor-pos",
+      storageBucket: "vendor-pos.firebasestorage.app",
+      messagingSenderId: "729715567147",
+      appId: "1:729715567147:web:2b04c4ff14fd09daa7186e"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Elements
+    const vendorShop = document.getElementById('vendorShop');
+    const productList = document.getElementById('productList');
+    const cartDrawer = document.getElementById('cartDrawer');
+    const cartToggle = document.getElementById('cartToggle');
+    const cartItems = document.getElementById('cartItems');
+    const cartCount = document.getElementById('cartCount');
+    const cartTotal = document.getElementById('cartTotal');
+    const custName = document.getElementById('custName');
+    const custPhone = document.getElementById('custPhone');
+    const custAddress = document.getElementById('custAddress');
+    const placeOrderBtn = document.getElementById('placeOrderBtn');
+    const closeCart = document.getElementById('closeCart');
+    const historyBtn = document.getElementById('historyBtn');
+    const historyDrawer = document.getElementById('historyDrawer');
+    const closeHistory = document.getElementById('closeHistory');
+    const historyPhone = document.getElementById('historyPhone');
+    const loadHistoryBtn = document.getElementById('loadHistoryBtn');
+    const historyList = document.getElementById('historyList');
+
+    let cart = [];
+
+    // This single async function will run automatically to set up the page.
+    (async function initializePage() {
+      try {
+        // 1. Identify vendor from slug in URL
+        const params = new URLSearchParams(window.location.search);
+        let vendorSlug = params.get("vendor");
+
+        if (!vendorSlug) {
+          const pathParts = window.location.pathname.split('/');
+          vendorSlug = pathParts.pop() || pathParts.pop(); // Handles trailing slash
+        }
+        
+
+
+
+        
+        // Redirect logic for clean URLs like /mandi-master/vendor/<slug>
+        const path = window.location.pathname.split('/').pop();
+        if (path && path !== 'vendor.html' && path !== '404.html') {
+          window.location.href = `/mandi-master/vendor.html?vendor=${path}`;
+          return; // Stop execution to allow redirect
+        }
+
+        if (!vendorSlug) {
+          document.body.innerHTML = "<h3 class='text-center mt-20 text-red-600 font-semibold'>Vendor not found in URL.</h3>";
+          return;
+        }
+
+        // 2. Fetch vendor info and products from Firestore
+        const vendorSnap = await db.collection("vendors").where("slug", "==", vendorSlug).limit(1).get();
+
+        if (vendorSnap.empty) {
+          document.body.innerHTML = "<h3 class='text-center mt-20 text-gray-600 font-semibold'>Store not found.</h3>";
+          return;
+        }
+
+        const vendorDoc = vendorSnap.docs[0];
+        const vendorId = vendorDoc.id;
+        const vendorData = vendorDoc.data();
+
+        // Set shop name
+        vendorShop.textContent = vendorData.shopName || "Vendor Store";
+
+
+
+        const customization = vendorData.customization || {}; // Get customization object
+
+// Set shop name
+vendorShop.textContent = vendorData.shopName || "Vendor Store";
+document.getElementById("shopNameSub").textContent = vendorData.shopName || "Vendor Store";
+
+// --- NEW: Apply customizations ---
+const themeColor = customization.themeColor || '#059669'; // Default to green
+
+// Apply banner image or color
+const vendorHeader = document.getElementById('vendorHeader');
+if (customization.bannerUrl) {
+    vendorHeader.style.backgroundImage = `url(${customization.bannerUrl})`;
+    vendorHeader.style.backgroundSize = 'cover';
+    vendorHeader.style.backgroundPosition = 'center';
+    vendorShop.textContent = ''; // Hide text if banner exists
+} else {
+    vendorHeader.style.backgroundColor = themeColor;
+}
+
+// Apply logo
+if (customization.logoUrl) {
+    document.getElementById('vendorLogo').src = customization.logoUrl;
+}
+
+// Apply welcome message
+if (customization.welcomeMessage) {
+    document.getElementById('vendorWelcomeMessage').textContent = customization.welcomeMessage;
+}
+
+// Apply theme color to key elements
+document.querySelectorAll('.addBtn, #placeOrderBtn, #loadHistoryBtn').forEach(btn => {
+    btn.style.backgroundColor = themeColor;
+});
+// --- End of new customization logic ---
+
+        // Load products for this vendor
+        const productsSnap = await db.collection('vendors').doc(vendorId).collection('products').get();
+        // ... inside the initializePage async function, after getting productsSnap ...
+if (productsSnap.empty) {
+    productList.innerHTML = '<div class="text-center text-gray-500 col-span-full">No products available.</div>';
+} else {
+    productsSnap.forEach(doc => {
+        const p = doc.data();
+        if (p.deleted) return;
+
+        const div = document.createElement('div');
+        // This is the new Product Card structure
+        div.className = 'bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden flex flex-col';
+        div.innerHTML = `
+            <img src="${p.imageURL || 'https://via.placeholder.com/300x200'}" alt="${p.name}" class="w-full h-40 object-cover">
+            <div class="p-4 flex-grow">
+              <h4 class="text-lg font-semibold text-gray-800">${p.name}</h4>
+              <p class="text-emerald-600 font-bold text-xl my-1">₹${p.price}<span class="text-sm font-normal text-gray-500"> / ${p.unit}</span></p>
+            </div>
+            <div class="p-4 bg-gray-50 border-t flex items-center gap-2">
+              <input type="number" step="0.1" min="0.1" value="1" class="border rounded-lg p-2 w-20 text-center qtyInput" />
+              <span class="text-gray-600 unit-label">${p.unit}</span>
+              <button class="flex-grow bg-emerald-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-emerald-600 transition-colors addBtn">Add</button>
+            </div>
+        `;
+
+        const input = div.querySelector('.qtyInput');
+        const addBtn = div.querySelector('.addBtn');
+
+        addBtn.onclick = () => {
+            let qty = parseFloat(input.value);
+            if (isNaN(qty) || qty <= 0) return;
+            cart.push({ id: p.id, name: p.name, price: p.price, unit: p.unit, qty });
+            refreshCart();
+            // Add a small visual feedback
+            addBtn.textContent = 'Added!';
+            setTimeout(() => { addBtn.textContent = 'Add'; }, 1000);
+        };
+
+        productList.appendChild(div);
+    });
+}
+        
+        // 3. Setup all event listeners now that we have the vendorId
+        setupEventListeners(vendorId);
+
+      } catch (error) {
+        console.error("Failed to initialize vendor page:", error);
+        document.body.innerHTML = "<h3 class='text-center mt-20 text-red-600 font-semibold'>An error occurred while loading the store.</h3>";
+      }
+    })();
+
+    function refreshCart() {
+      cartItems.innerHTML = '';
+      let total = 0;
+      cart.forEach(it => {
+        const lineTotal = it.qty * it.price;
+        total += lineTotal;
+        const item = document.createElement('div');
+        item.className = 'flex justify-between items-center border-b pb-1';
+        item.innerHTML = `<div>${it.name} (${it.qty} ${it.unit})</div><div>₹${lineTotal.toFixed(2)}</div>`;
+        cartItems.appendChild(item);
+      });
+      cartCount.textContent = cart.length;
+      cartTotal.textContent = `Total: ₹${total.toFixed(2)}`;
+      if (cart.length > 0) cartToggle.classList.remove('hidden');
+      else cartToggle.classList.add('hidden');
+    }
+
+    function setupEventListeners(vendorId) {
+      cartToggle.onclick = () => cartDrawer.classList.toggle('hidden');
+      closeCart.onclick = () => cartDrawer.classList.add('hidden');
+      historyBtn.onclick = () => historyDrawer.classList.toggle('hidden');
+      closeHistory.onclick = () => historyDrawer.classList.add('hidden');
+      
+      placeOrderBtn.onclick = async () => {
+        const name = custName.value.trim();
+        const phone = custPhone.value.trim();
+        const address = custAddress.value.trim();
+        if (!name || !phone || !address) return alert("Please fill name, phone, and address.");
+        if (cart.length === 0) return alert("Cart is empty!");
+
+        const total = cart.reduce((sum, i) => sum + i.qty * i.price, 0);
+        try {
+            await db.collection('vendors').doc(vendorId).collection('orders').add({
+                customerName: name,
+                phone,
+                address,
+                items: cart,
+                total,
+                status: "Pending",
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            alert("✅ Order placed successfully!");
+            cart = [];
+            refreshCart();
+            cartDrawer.classList.add('hidden');
+        } catch(e) {
+            alert("❌ Failed to place order. Please try again.");
+            console.error("Order placement error: ", e);
+        }
+      };
+
+      loadHistoryBtn.onclick = async () => {
+        const phone = historyPhone.value.trim();
+        if (!phone) return alert("Enter phone number to view orders.");
+        
+        try {
+            const snap = await db.collection('vendors').doc(vendorId).collection('orders')
+                .where('phone', '==', phone).orderBy('createdAt', 'desc').get();
+
+            historyList.innerHTML = '';
+            if (snap.empty) {
+                historyList.innerHTML = '<div class="text-gray-500 text-center">No past orders found.</div>';
+                return;
+            }
+
+            snap.forEach(doc => {
+                const d = doc.data();
+                const items = d.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+                const div = document.createElement('div');
+                div.className = 'border rounded p-3 bg-white shadow-sm';
+                div.innerHTML = `
+                    <div class="font-semibold mb-1">${d.customerName}</div>
+                    <div class="text-sm text-gray-600 mb-1">${items}</div>
+                    <div class="text-right font-semibold text-emerald-700">₹${d.total.toFixed(2)}</div>
+                    <div class="text-xs text-gray-500 mt-1">Status: ${d.status}</div>
+                    <div class="text-xs text-gray-400">${d.address || ''}</div>
+                `;
+                historyList.appendChild(div);
+            });
+        } catch (e) {
+            alert("❌ Could not load order history.");
+            console.error("History loading error: ", e);
+        }
+      };
+    }
+
+
+
+
+    
+  </script>
+</body>
+</html>

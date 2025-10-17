@@ -1818,16 +1818,98 @@ tabOrders.onclick = () => {
 
 orderFilter.onchange = () => renderOrders();
 
+// function renderOrders() {
+//   const filter = orderFilter.value;
+//   ordersList.innerHTML = '';
+
+//   let visibleOrders = allOrders;
+//   if (filter !== 'all') {
+//     visibleOrders = allOrders.filter(o => o.status === filter);
+//   }
+
+//   if (visibleOrders.length === 0) {
+//     ordersList.innerHTML = `<div class="muted text-center">No ${filter === 'all' ? '' : filter} orders</div>`;
+//     return;
+//   }
+
+//   visibleOrders.forEach(order => {
+//     const colorMap = {
+//       Pending: 'bg-gray-200 text-gray-800',
+//       Confirmed: 'bg-blue-200 text-blue-800',
+//       Delivered: 'bg-green-200 text-green-800',
+//       Cancelled: 'bg-red-200 text-red-800'
+//     };
+//     const tagColor = colorMap[order.status] || 'bg-gray-100';
+
+//     const div = document.createElement('div');
+//     div.className = 'border rounded p-3 bg-white shadow-sm';
+//     const items = order.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+//     div.innerHTML = `
+//       <div class="flex justify-between items-center mb-1">
+//         <div class="font-semibold">${order.customerName} — ${order.phone}</div>
+//         <span class="px-2 py-0.5 rounded text-xs font-semibold ${tagColor}">${order.status}</span>
+//       </div>
+//       <div class="small muted mb-1">${items}</div>
+//       <div class="font-semibold text-emerald-700 mb-2 text-right">₹${order.total}</div>
+//       <select class="border rounded p-1 text-sm statusSelect">
+//         <option ${order.status === 'Pending' ? 'selected' : ''}>Pending</option>
+//         <option ${order.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+//         <option ${order.status === 'Delivered' ? 'selected' : ''}>Delivered</option>
+//         <option ${order.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
+//       </select>
+//     `;
+//     const select = div.querySelector('.statusSelect');
+//     select.onchange = async () => {
+//       await db.collection('vendors').doc(currentUID).collection('orders').doc(order.id).update({ status: select.value });
+//       select.classList.add('bg-emerald-100');
+//       showToast(`✅ Order marked as ${select.value}`);
+//     };
+//     ordersList.appendChild(div);
+//   });
+// }
+
+
+// ---------- ORDERS: render + filters + summary ----------
 function renderOrders() {
-  const filter = orderFilter.value;
+  const filter = orderFilter.value || 'all';
   ordersList.innerHTML = '';
 
-  let visibleOrders = allOrders;
-  if (filter !== 'all') {
-    visibleOrders = allOrders.filter(o => o.status === filter);
-  }
+  // compute totals (Delivered only) by source
+  let onlineDeliveredTotal = 0;
+  let instoreDeliveredTotal = 0;
+  (allOrders || []).forEach(o => {
+    const src = (o.source || 'Online'); // fallback to Online if missing
+    if (o.status === 'Delivered') {
+      const t = Number(o.total) || 0;
+      if (String(src).toLowerCase() === 'in-store' || String(src).toLowerCase()==='instore') instoreDeliveredTotal += t;
+      else onlineDeliveredTotal += t;
+    }
+  });
 
-  if (visibleOrders.length === 0) {
+  // Insert or update summary banner above ordersList
+  let summaryEl = document.getElementById('ordersSummary');
+  if (!summaryEl) {
+    summaryEl = document.createElement('div');
+    summaryEl.id = 'ordersSummary';
+    summaryEl.className = 'flex gap-3 mb-3';
+    ordersList.parentNode.insertBefore(summaryEl, ordersList);
+  }
+  summaryEl.innerHTML = `
+    <div class="p-3 rounded bg-white shadow-sm flex-1">
+      <div class="text-sm muted">Online Sales (Delivered)</div>
+      <div class="font-semibold text-emerald-700">₹${onlineDeliveredTotal.toFixed(2)}</div>
+    </div>
+    <div class="p-3 rounded bg-white shadow-sm flex-1">
+      <div class="text-sm muted">In-Store Sales (Delivered)</div>
+      <div class="font-semibold text-emerald-700">₹${instoreDeliveredTotal.toFixed(2)}</div>
+    </div>
+  `;
+
+  // filter orders
+  let visibleOrders = allOrders || [];
+  if (filter !== 'all') visibleOrders = visibleOrders.filter(o => o.status === filter);
+
+  if (!visibleOrders || visibleOrders.length === 0) {
     ordersList.innerHTML = `<div class="muted text-center">No ${filter === 'all' ? '' : filter} orders</div>`;
     return;
   }
@@ -1843,27 +1925,67 @@ function renderOrders() {
 
     const div = document.createElement('div');
     div.className = 'border rounded p-3 bg-white shadow-sm';
-    const items = order.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+
+    // Build items list robustly (handle different key names saved by storefront)
+    const itemsHtml = (order.items || []).map(i => {
+      const qty = (i.qtyDisplay !== undefined && i.qtyDisplay !== null) ? i.qtyDisplay
+                  : (i.qtyEntered !== undefined && i.qtyEntered !== null) ? i.qtyEntered
+                  : (i.qty !== undefined && i.qty !== null) ? i.qty
+                  : (i.qtyForPrice !== undefined && i.qtyForPrice !== null) ? i.qtyForPrice
+                  : '';
+      const unit = i.unitDisplay || i.unitStored || i.unit || '';
+      return `• ${escapeHtml(i.name || '')} — ${escapeHtml(String(qty))} ${escapeHtml(String(unit))}`;
+    }).join('<br>');
+
+    // Source badge if available
+    const sourceBadge = order.source ? `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-slate-100">${escapeHtml(order.source)}</span>` : '';
+
     div.innerHTML = `
       <div class="flex justify-between items-center mb-1">
-        <div class="font-semibold">${order.customerName} — ${order.phone}</div>
-        <span class="px-2 py-0.5 rounded text-xs font-semibold ${tagColor}">${order.status}</span>
+        <div class="font-semibold">${escapeHtml(order.customerName || 'Customer')} — ${escapeHtml(order.phone || '')} ${sourceBadge}</div>
+        <span class="px-2 py-0.5 rounded text-xs font-semibold ${tagColor}">${escapeHtml(order.status || '')}</span>
       </div>
-      <div class="small muted mb-1">${items}</div>
-      <div class="font-semibold text-emerald-700 mb-2 text-right">₹${order.total}</div>
-      <select class="border rounded p-1 text-sm statusSelect">
-        <option ${order.status === 'Pending' ? 'selected' : ''}>Pending</option>
-        <option ${order.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
-        <option ${order.status === 'Delivered' ? 'selected' : ''}>Delivered</option>
-        <option ${order.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
-      </select>
+      <div class="small muted mb-1">${itemsHtml}</div>
+      <div class="font-semibold text-emerald-700 mb-2 text-right">₹${Number(order.total || 0).toFixed(2)}</div>
+      <div class="flex items-center gap-2">
+        <select class="border rounded p-1 text-sm statusSelect">
+          <option ${order.status === 'Pending' ? 'selected' : ''}>Pending</option>
+          <option ${order.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+          <option ${order.status === 'Delivered' ? 'selected' : ''}>Delivered</option>
+          <option ${order.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
+        </select>
+        <button class="px-2 py-1 border rounded viewOrderBtn text-sm">View</button>
+      </div>
     `;
+
     const select = div.querySelector('.statusSelect');
     select.onchange = async () => {
-      await db.collection('vendors').doc(currentUID).collection('orders').doc(order.id).update({ status: select.value });
-      select.classList.add('bg-emerald-100');
-      showToast(`✅ Order marked as ${select.value}`);
+      try {
+        const newStatus = select.value;
+        const updateObj = { status: newStatus };
+        if (newStatus === 'Delivered') {
+          updateObj.deliveredAt = firebase.firestore.FieldValue.serverTimestamp();
+        } else {
+          // If marking back to non-delivered, remove deliveredAt (optional)
+          updateObj.deliveredAt = firebase.firestore.FieldValue.delete();
+        }
+        await db.collection('vendors').doc(currentUID).collection('orders').doc(order.id).update(updateObj);
+        select.classList.add('bg-emerald-100');
+        showToast(`✅ Order marked as ${newStatus}`);
+      } catch (err) {
+        console.error('Failed to update order status', err);
+        alert('Failed to update order status. See console.');
+      }
     };
+
+    // Optional: viewOrderBtn could open a modal / expand; keep placeholder for future
+    const viewBtn = div.querySelector('.viewOrderBtn');
+    viewBtn.onclick = () => {
+      // simple expand toggle: show JSON in alert — you can replace with modal later
+      const pretty = JSON.stringify(order, null, 2);
+      alert(pretty);
+    };
+
     ordersList.appendChild(div);
   });
 }
