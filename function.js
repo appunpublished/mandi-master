@@ -1376,21 +1376,73 @@ document.addEventListener('click', (e) => {
 
 //---------------Share QR Code-----------------
 
+// shareLinkBtn.onclick = () => {
+//   if(!currentUID) return alert("Login first");
+//   const link = `${window.location.origin}/mandi-master/vendor.html?vendor_id=${currentUID}`;
+//   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
+//   const modalHtml = `
+//     <div class="modal-backdrop" id="qrModal">
+//       <div class="bg-white rounded-lg p-4 text-center max-w-sm w-full shadow">
+//         <h3 class="font-semibold mb-2">Share this Link / QR</h3>
+//         <img src="${qrUrl}" class="mx-auto mb-3" />
+//         <input type="text" readonly class="w-full border rounded p-2 mb-2" value="${link}">
+//         <button class="big-btn bg-sky-500 text-white" onclick="navigator.clipboard.writeText('${link}')">Copy Link</button>
+//         <button class="big-btn bg-slate-300 mt-2" onclick="document.getElementById('qrModal').remove()">Close</button>
+//       </div>
+//     </div>`;
+//   document.body.insertAdjacentHTML('beforeend', modalHtml);
+// };
+
+
 shareLinkBtn.onclick = () => {
-  if(!currentUID) return alert("Login first");
-  const link = `${window.location.origin}/vendor.html?vendor_id=${currentUID}`;
+  if (!currentUID) return alert("Login first");
+
+  // Detect base path automatically
+  let basePath = '';
+  if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') {
+    basePath = ''; // local
+  } else {
+    basePath = '/mandi-master'; // GitHub Pages subfolder
+  }
+
+  // Build vendor link dynamically
+  const link = `${window.location.origin}${basePath}/vendor.html?vendor_id=${currentUID}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
+
+  // Avoid opening multiple modals
+  if (document.getElementById('qrModal')) document.getElementById('qrModal').remove();
+
+  // Build modal HTML
   const modalHtml = `
-    <div class="modal-backdrop" id="qrModal">
-      <div class="bg-white rounded-lg p-4 text-center max-w-sm w-full shadow">
-        <h3 class="font-semibold mb-2">Share this Link / QR</h3>
-        <img src="${qrUrl}" class="mx-auto mb-3" />
-        <input type="text" readonly class="w-full border rounded p-2 mb-2" value="${link}">
-        <button class="big-btn bg-sky-500 text-white" onclick="navigator.clipboard.writeText('${link}')">Copy Link</button>
-        <button class="big-btn bg-slate-300 mt-2" onclick="document.getElementById('qrModal').remove()">Close</button>
+    <div class="modal-backdrop fixed inset-0 bg-black/50 flex items-center justify-center z-50" id="qrModal">
+      <div class="bg-white rounded-2xl p-5 text-center max-w-sm w-full shadow-xl animate-fadeIn">
+        <h3 class="font-semibold text-lg mb-3">Share Your Store Link</h3>
+        <img src="${qrUrl}" alt="QR Code" class="mx-auto mb-3 rounded-md shadow-sm" />
+        <input type="text" readonly class="w-full border rounded-lg p-2 mb-2 text-sm text-gray-700" value="${link}">
+        <button id="copyBtn" class="big-btn bg-sky-500 text-white rounded-lg px-4 py-2 w-full">Copy Link</button>
+        <button class="big-btn bg-slate-300 mt-2 rounded-lg px-4 py-2 w-full" onclick="document.getElementById('qrModal').remove()">Close</button>
       </div>
     </div>`;
+
   document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  // Copy button with confirmation
+  document.getElementById('copyBtn').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = "Copied ✅";
+      btn.classList.remove("bg-sky-500");
+      btn.classList.add("bg-green-600");
+      setTimeout(() => {
+        btn.textContent = "Copy Link";
+        btn.classList.remove("bg-green-600");
+        btn.classList.add("bg-sky-500");
+      }, 1500);
+    } catch (err) {
+      alert("Could not copy link. Please copy manually.");
+    }
+  };
 };
 
 
