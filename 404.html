@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Redirecting...</title>
+  <script>
+    // This script will run when GitHub Pages serves this 404 page.
+
+    // 1. Get the path the user tried to access from the URL.
+    // e.g., for "user.github.io/repo/vendor/my-shop", this gets "/repo/vendor/my-shop"
+    const path = window.location.pathname;
+    
+    // 2. Define the base path of your project (if it's in a sub-folder like "mandi-master").
+    // IMPORTANT: If your repo is named something else, change '/mandi-master' here.
+    const repoBasePath = '/mandi-master'; 
+
+    // 3. Check if the path looks like a vendor URL.
+    if (path.startsWith(repoBasePath + '/vendor/')) {
+
+      // 4. Extract the vendor slug from the end of the path.
+      // e.g., it will pull "my-shop" from "/repo/vendor/my-shop"
+      const slug = path.substring(path.lastIndexOf('/') + 1);
+
+      // 5. Construct the actual URL that vendor.html can read.
+      const redirectUrl = repoBasePath + '/vendor.html?vendor=' + slug;
+
+      // 6. Redirect the user to the correct URL.
+      // `replace` is used so the user can't click "back" to the 404 page.
+      window.location.replace(redirectUrl);
+    }
+  </script>
+</head>
+<body>
+  <p>If you are not redirected automatically, please wait a moment...</p>
+</body>
+</html>

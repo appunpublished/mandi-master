@@ -82,66 +82,101 @@
     const historyList = document.getElementById('historyList');
 
     let cart = [];
-    const params = new URLSearchParams(window.location.search);
-    const vendorId = params.get('vendor_id');
 
-    if (!vendorId) {
-      vendorShop.textContent = "Invalid Vendor Link!";
-      throw new Error("Missing vendor_id parameter");
-    }
+    // This single async function will run automatically to set up the page.
+    (async function initializePage() {
+      try {
+        // 1. Identify vendor from slug in URL
+        const params = new URLSearchParams(window.location.search);
+        let vendorSlug = params.get("vendor");
 
-    async function loadVendor() {
-      const vdoc = await db.collection('vendors').doc(vendorId).get();
-      vendorShop.textContent = vdoc.exists ? vdoc.data().shopName : "Vendor Shop";
+        if (!vendorSlug) {
+          const pathParts = window.location.pathname.split('/');
+          vendorSlug = pathParts.pop() || pathParts.pop(); // Handles trailing slash
+        }
+        
+        // Redirect logic for clean URLs like /mandi-master/vendor/<slug>
+        const path = window.location.pathname.split('/').pop();
+        if (path && path !== 'vendor.html' && path !== '404.html') {
+          window.location.href = `/mandi-master/vendor.html?vendor=${path}`;
+          return; // Stop execution to allow redirect
+        }
 
-      const snap = await db.collection('vendors').doc(vendorId).collection('products').get();
-      if (snap.empty) {
-        productList.innerHTML = '<div class="text-center text-gray-500">No products available.</div>';
-        return;
+        if (!vendorSlug) {
+          document.body.innerHTML = "<h3 class='text-center mt-20 text-red-600 font-semibold'>Vendor not found in URL.</h3>";
+          return;
+        }
+
+        // 2. Fetch vendor info and products from Firestore
+        const vendorSnap = await db.collection("vendors").where("slug", "==", vendorSlug).limit(1).get();
+
+        if (vendorSnap.empty) {
+          document.body.innerHTML = "<h3 class='text-center mt-20 text-gray-600 font-semibold'>Store not found.</h3>";
+          return;
+        }
+
+        const vendorDoc = vendorSnap.docs[0];
+        const vendorId = vendorDoc.id;
+        const vendorData = vendorDoc.data();
+
+        // Set shop name
+        vendorShop.textContent = vendorData.shopName || "Vendor Store";
+
+        // Load products for this vendor
+        const productsSnap = await db.collection('vendors').doc(vendorId).collection('products').get();
+        if (productsSnap.empty) {
+          productList.innerHTML = '<div class="text-center text-gray-500">No products available.</div>';
+        } else {
+          productsSnap.forEach(doc => {
+            const p = doc.data();
+            if (p.deleted) return;
+
+            const div = document.createElement('div');
+            div.className = 'flex items-center justify-between bg-white rounded-lg shadow p-2 mb-2';
+            div.innerHTML = `
+              <div class="flex-1">
+                <div class="font-semibold">${p.name}</div>
+                <div class="text-sm text-gray-600">₹${p.price}/${p.unit}</div>
+              </div>
+              <div class="flex items-center gap-1">
+                <select class="border rounded p-1 text-sm qtySelect">
+                  <option value="0.25">250g</option>
+                  <option value="0.5">500g</option>
+                  <option value="1">1kg</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <input type="number" step="0.01" min="0.01" value="1" class="border rounded p-1 w-16 text-sm qtyInput hidden" />
+                <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm addBtn">Add</button>
+              </div>
+            `;
+
+            const select = div.querySelector('.qtySelect');
+            const input = div.querySelector('.qtyInput');
+            const addBtn = div.querySelector('.addBtn');
+
+            select.onchange = () => {
+              input.classList.toggle('hidden', select.value !== "custom");
+            };
+
+            addBtn.onclick = () => {
+              let qty = select.value === "custom" ? parseFloat(input.value) : parseFloat(select.value);
+              if (isNaN(qty) || qty <= 0) return; // Basic validation
+              cart.push({ name: p.name, price: p.price, unit: p.unit, qty });
+              refreshCart();
+            };
+
+            productList.appendChild(div);
+          });
+        }
+        
+        // 3. Setup all event listeners now that we have the vendorId
+        setupEventListeners(vendorId);
+
+      } catch (error) {
+        console.error("Failed to initialize vendor page:", error);
+        document.body.innerHTML = "<h3 class='text-center mt-20 text-red-600 font-semibold'>An error occurred while loading the store.</h3>";
       }
-
-      snap.forEach(doc => {
-        const p = doc.data();
-        if (p.deleted) return;
-
-        const div = document.createElement('div');
-        div.className = 'flex items-center justify-between bg-white rounded-lg shadow p-2 mb-2';
-        div.innerHTML = `
-          <div class="flex-1">
-            <div class="font-semibold">${p.name}</div>
-            <div class="text-sm text-gray-600">₹${p.price}/${p.unit}</div>
-          </div>
-          <div class="flex items-center gap-1">
-            <select class="border rounded p-1 text-sm qtySelect">
-              <option value="0.25">250g</option>
-              <option value="0.5">500g</option>
-              <option value="1">1kg</option>
-              <option value="custom">Custom</option>
-            </select>
-            <input type="number" step="0.01" min="0.01" value="1" class="border rounded p-1 w-16 text-sm qtyInput hidden" />
-            <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm addBtn">Add</button>
-          </div>
-        `;
-
-        const select = div.querySelector('.qtySelect');
-        const input = div.querySelector('.qtyInput');
-        const addBtn = div.querySelector('.addBtn');
-
-        select.onchange = () => {
-          if (select.value === "custom") input.classList.remove('hidden');
-          else input.classList.add('hidden');
-        };
-
-        addBtn.onclick = () => {
-          let qty = select.value === "custom" ? parseFloat(input.value) : parseFloat(select.value);
-          if (isNaN(qty) || qty <= 0) qty = 1;
-          cart.push({ name: p.name, price: p.price, unit: p.unit, qty });
-          refreshCart();
-        };
-
-        productList.appendChild(div);
-      });
-    }
+    })();
 
     function refreshCart() {
       cartItems.innerHTML = '';
@@ -157,68 +192,77 @@
       cartCount.textContent = cart.length;
       cartTotal.textContent = `Total: ₹${total.toFixed(2)}`;
       if (cart.length > 0) cartToggle.classList.remove('hidden');
+      else cartToggle.classList.add('hidden');
     }
 
-    cartToggle.onclick = () => cartDrawer.classList.toggle('hidden');
-    closeCart.onclick = () => cartDrawer.classList.add('hidden');
+    function setupEventListeners(vendorId) {
+      cartToggle.onclick = () => cartDrawer.classList.toggle('hidden');
+      closeCart.onclick = () => cartDrawer.classList.add('hidden');
+      historyBtn.onclick = () => historyDrawer.classList.toggle('hidden');
+      closeHistory.onclick = () => historyDrawer.classList.add('hidden');
+      
+      placeOrderBtn.onclick = async () => {
+        const name = custName.value.trim();
+        const phone = custPhone.value.trim();
+        const address = custAddress.value.trim();
+        if (!name || !phone || !address) return alert("Please fill name, phone, and address.");
+        if (cart.length === 0) return alert("Cart is empty!");
 
-    // 🔹 Place Order
-    placeOrderBtn.onclick = async () => {
-      const name = custName.value.trim();
-      const phone = custPhone.value.trim();
-      const address = custAddress.value.trim();
-      if (!name || !phone || !address) return alert("Please fill name, phone, and address.");
-      if (cart.length === 0) return alert("Cart is empty!");
+        const total = cart.reduce((sum, i) => sum + i.qty * i.price, 0);
+        try {
+            await db.collection('vendors').doc(vendorId).collection('orders').add({
+                customerName: name,
+                phone,
+                address,
+                items: cart,
+                total,
+                status: "Pending",
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            alert("✅ Order placed successfully!");
+            cart = [];
+            refreshCart();
+            cartDrawer.classList.add('hidden');
+        } catch(e) {
+            alert("❌ Failed to place order. Please try again.");
+            console.error("Order placement error: ", e);
+        }
+      };
 
-      const total = cart.reduce((sum, i) => sum + i.qty * i.price, 0);
-      await db.collection('vendors').doc(vendorId).collection('orders').add({
-        customerName: name,
-        phone,
-        address,
-        items: cart,
-        total,
-        status: "Pending",
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      alert("✅ Order placed successfully!");
-      cart = [];
-      refreshCart();
-      cartDrawer.classList.add('hidden');
-    };
+      loadHistoryBtn.onclick = async () => {
+        const phone = historyPhone.value.trim();
+        if (!phone) return alert("Enter phone number to view orders.");
+        
+        try {
+            const snap = await db.collection('vendors').doc(vendorId).collection('orders')
+                .where('phone', '==', phone).orderBy('createdAt', 'desc').get();
 
-    // 🔹 Order History
-    historyBtn.onclick = () => historyDrawer.classList.toggle('hidden');
-    closeHistory.onclick = () => historyDrawer.classList.add('hidden');
+            historyList.innerHTML = '';
+            if (snap.empty) {
+                historyList.innerHTML = '<div class="text-gray-500 text-center">No past orders found.</div>';
+                return;
+            }
 
-    loadHistoryBtn.onclick = async () => {
-      const phone = historyPhone.value.trim();
-      if (!phone) return alert("Enter phone number to view orders.");
-      const snap = await db.collection('vendors').doc(vendorId).collection('orders')
-        .where('phone', '==', phone).orderBy('createdAt', 'desc').get();
-
-      historyList.innerHTML = '';
-      if (snap.empty) {
-        historyList.innerHTML = '<div class="text-gray-500 text-center">No past orders found.</div>';
-        return;
-      }
-
-      snap.forEach(doc => {
-        const d = doc.data();
-        const items = d.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
-        const div = document.createElement('div');
-        div.className = 'border rounded p-3 bg-white shadow-sm';
-        div.innerHTML = `
-          <div class="font-semibold mb-1">${d.customerName}</div>
-          <div class="text-sm text-gray-600 mb-1">${items}</div>
-          <div class="text-right font-semibold text-emerald-700">₹${d.total}</div>
-          <div class="text-xs text-gray-500 mt-1">Status: ${d.status}</div>
-          <div class="text-xs text-gray-400">${d.address || ''}</div>
-        `;
-        historyList.appendChild(div);
-      });
-    };
-
-    loadVendor();
+            snap.forEach(doc => {
+                const d = doc.data();
+                const items = d.items.map(i => `${i.name} (${i.qty} ${i.unit})`).join(', ');
+                const div = document.createElement('div');
+                div.className = 'border rounded p-3 bg-white shadow-sm';
+                div.innerHTML = `
+                    <div class="font-semibold mb-1">${d.customerName}</div>
+                    <div class="text-sm text-gray-600 mb-1">${items}</div>
+                    <div class="text-right font-semibold text-emerald-700">₹${d.total.toFixed(2)}</div>
+                    <div class="text-xs text-gray-500 mt-1">Status: ${d.status}</div>
+                    <div class="text-xs text-gray-400">${d.address || ''}</div>
+                `;
+                historyList.appendChild(div);
+            });
+        } catch (e) {
+            alert("❌ Could not load order history.");
+            console.error("History loading error: ", e);
+        }
+      };
+    }
   </script>
 </body>
 </html>
