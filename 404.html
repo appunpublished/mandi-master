@@ -1,38 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redirecting...</title>
-    <style>
-        body { font-family: system-ui, sans-serif; text-align: center; padding-top: 50px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Page Not Found | Mandi Master</title>
+  <link rel="icon" href="/mandi-master/assets/favicon.png" />
+  <style>
+    body {
+      font-family: "Inter", system-ui, sans-serif;
+      background: #f9fafb;
+      color: #111827;
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2.2rem;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      color: #6b7280;
+      margin-bottom: 1.5rem;
+    }
+    a {
+      background: #0ea5e9;
+      color: white;
+      text-decoration: none;
+      padding: 0.6rem 1.4rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    a:hover {
+      background: #0284c7;
+    }
+  </style>
 </head>
 <body>
-    <p>Finding store, please wait...</p>
-    <script>
-        (function() {
-            // Get the path from the URL, e.g., "/vendor/vendor-5"
-            const path = window.location.pathname;
-            
-            // Split the path into parts
-            const parts = path.split('/').filter(part => part.length > 0);
+  <div id="message">
+    <h1>404 – Page Not Found</h1>
+    <p>Sorry, we couldn't find that page. You can go back to the home page.</p>
+    <a href="/mandi-master/">🏠 Go to Home</a>
+  </div>
 
-            // Check if it's a vendor URL (e.g., /vendor/slug or /mandi-master/vendor/slug)
-            if (parts.includes('vendor') && parts.length >= 2) {
-                // The slug is the last part of the URL
-                const vendorSlug = parts[parts.length - 1];
-                
-                // Construct the correct URL with a query parameter
-                const redirectUrl = `/vendor.html?vendor=${vendorSlug}`;
-                
-                // Redirect the browser
-                window.location.replace(redirectUrl);
-            } else {
-                // If it's not a recognized path, go to the homepage
-                window.location.replace('/index.html');
-            }
-        })();
-    </script>
+  <script>
+    (function() {
+      const path = window.location.pathname;
+      const vendorMatch = path.match(/\/mandi-master\/vendor\/([^/]+)/);
+
+      // Handle clean vendor URLs
+      if (vendorMatch) {
+        const vendorSlug = vendorMatch[1];
+        const redirectUrl = `/mandi-master/vendor.html?vendor=${vendorSlug}`;
+        document.getElementById('message').innerHTML = `
+          <h1>Redirecting...</h1>
+          <p>Loading vendor page <strong>${vendorSlug}</strong></p>
+        `;
+        setTimeout(() => window.location.replace(redirectUrl), 800);
+        return;
+      }
+
+      // You can extend this block for more pretty URL redirects later:
+      // Example: /mandi-master/product/slug → product.html?item=slug
+      //
+      // const productMatch = path.match(/\/mandi-master\/product\/([^/]+)/);
+      // if (productMatch) {
+      //   const slug = productMatch[1];
+      //   window.location.replace(`/mandi-master/product.html?item=${slug}`);
+      //   return;
+      // }
+
+      // Otherwise, show the normal 404 message
+      console.warn("404: No matching redirect found for", path);
+    })();
+  </script>
 </body>
 </html>

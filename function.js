@@ -1694,7 +1694,7 @@ shareLinkBtn.onclick = async () => {
 
     // --- THIS IS THE KEY CHANGE ---
     // Generate the clean, user-friendly URL instead of the query parameter one.
-    const link = `${window.location.origin}/mandi-master/vendor/${slug}`;
+    const link = `${window.location.origin}/mandi-master/vendor.html?${slug}`;
     
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
 
