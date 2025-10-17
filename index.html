@@ -123,7 +123,7 @@
     <button id="pullBtn" class="w-full big-btn bg-sky-500 text-white" data-i18n="btn_pull">⬇️ Pull</button>
     <button id="langToggle" class="w-full big-btn bg-indigo-100" title="Toggle language">🌐 हिंदी</button>
     <button id="shareLinkBtn" class="w-full big-btn bg-emerald-500 text-white">🔗 Share Store QR/Link</button>
-
+    <button id="tabStorefront" class="flex-1 big-btn bg-slate-100">Storefront</button>
     <button id="logoutBtn" class="w-full big-btn bg-red-500 text-white" data-i18n="btn_logout">Logout</button>
   </div>
 </div>
@@ -247,6 +247,37 @@
           </select>
         </div>
         <div id="ordersList" class="space-y-2 max-h-96 overflow-auto"></div>
+      </section>
+
+
+      <section id="view-storefront" class="hidden">
+        <div class="p-4 bg-white rounded-xl shadow mb-6">
+          <h3 class="font-semibold mb-4 text-gray-700 text-lg">🛍️ Store Customization</h3>
+        
+          <!-- Logo Upload -->
+          <label class="block mb-2 text-sm text-gray-600">Logo:</label>
+          <input type="file" id="logoUpload" accept="image/*" class="mb-2 w-full border rounded p-2">
+          <img id="logoPreview" class="w-24 h-24 object-contain rounded border mb-3 hidden" />
+        
+          <!-- Banner Upload -->
+          <label class="block mb-2 text-sm text-gray-600">Banner:</label>
+          <input type="file" id="bannerUpload" accept="image/*" class="mb-2 w-full border rounded p-2">
+          <img id="bannerPreview" class="w-full h-32 object-cover rounded mb-3 hidden" />
+        
+          <!-- Description -->
+          <label class="block mb-2 text-sm text-gray-600">Store Description:</label>
+          <textarea id="storeDesc" class="w-full border rounded p-2 mb-3" rows="3" placeholder="Describe your store..."></textarea>
+        
+          <!-- Theme Color -->
+          <label class="block mb-2 text-sm text-gray-600">Theme Color:</label>
+          <input type="color" id="themeColor" class="w-16 h-10 p-1 rounded border mb-4 cursor-pointer">
+        
+          <!-- Save Button -->
+          <button id="saveBranding" class="bg-emerald-600 text-white px-4 py-2 rounded w-full font-semibold">
+            Save Customization
+          </button>
+        </div>
+        
       </section>
       
 

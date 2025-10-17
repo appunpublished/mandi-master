@@ -1,35 +1,38 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Redirecting...</title>
-  <script>
-    // This script will run when GitHub Pages serves this 404 page.
-
-    // 1. Get the path the user tried to access from the URL.
-    // e.g., for "user.github.io/repo/vendor/my-shop", this gets "/repo/vendor/my-shop"
-    const path = window.location.pathname;
-    
-    // 2. Define the base path of your project (if it's in a sub-folder like "mandi-master").
-    // IMPORTANT: If your repo is named something else, change '/mandi-master' here.
-    const repoBasePath = '/mandi-master'; 
-
-    // 3. Check if the path looks like a vendor URL.
-    if (path.startsWith(repoBasePath + '/vendor/')) {
-
-      // 4. Extract the vendor slug from the end of the path.
-      // e.g., it will pull "my-shop" from "/repo/vendor/my-shop"
-      const slug = path.substring(path.lastIndexOf('/') + 1);
-
-      // 5. Construct the actual URL that vendor.html can read.
-      const redirectUrl = repoBasePath + '/vendor.html?vendor=' + slug;
-
-      // 6. Redirect the user to the correct URL.
-      // `replace` is used so the user can't click "back" to the 404 page.
-      window.location.replace(redirectUrl);
-    }
-  </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecting...</title>
+    <style>
+        body { font-family: system-ui, sans-serif; text-align: center; padding-top: 50px; }
+    </style>
 </head>
 <body>
-  <p>If you are not redirected automatically, please wait a moment...</p>
+    <p>Finding store, please wait...</p>
+    <script>
+        (function() {
+            // Get the path from the URL, e.g., "/vendor/vendor-5"
+            const path = window.location.pathname;
+            
+            // Split the path into parts
+            const parts = path.split('/').filter(part => part.length > 0);
+
+            // Check if it's a vendor URL (e.g., /vendor/slug or /mandi-master/vendor/slug)
+            if (parts.includes('vendor') && parts.length >= 2) {
+                // The slug is the last part of the URL
+                const vendorSlug = parts[parts.length - 1];
+                
+                // Construct the correct URL with a query parameter
+                const redirectUrl = `/vendor.html?vendor=${vendorSlug}`;
+                
+                // Redirect the browser
+                window.location.replace(redirectUrl);
+            } else {
+                // If it's not a recognized path, go to the homepage
+                window.location.replace('/index.html');
+            }
+        })();
+    </script>
 </body>
 </html>
