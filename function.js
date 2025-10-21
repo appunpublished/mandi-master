@@ -1,21 +1,21 @@
 (async function(){
 
   // ---------- FIREBASE CONFIG ----------
-  const firebaseConfig = {
-  apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
-  authDomain: "vendor-pos.firebaseapp.com",
-  projectId: "vendor-pos",
-  storageBucket: "vendor-pos.firebasestorage.app",
-  messagingSenderId: "729715567147",
-  appId: "1:729715567147:web:2b04c4ff14fd09daa7186e",
-  measurementId: "G-CG95QJFKGW"
-};
+//   const firebaseConfig = {
+//   apiKey: "AIzaSyBcb4VreNGceQNxyCWh2tDl8ARGkCiptSQ",
+//   authDomain: "vendor-pos.firebaseapp.com",
+//   projectId: "vendor-pos",
+//   storageBucket: "vendor-pos.firebasestorage.app",
+//   messagingSenderId: "729715567147",
+//   appId: "1:729715567147:web:2b04c4ff14fd09daa7186e",
+//   measurementId: "G-CG95QJFKGW"
+// };
 
-  // ---------- INIT ----------
-  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
-  const storage = firebase.storage();
+//   // ---------- INIT ----------
+//   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+//   const auth = firebase.auth();
+//   const db = firebase.firestore();
+//   const storage = firebase.storage();
 
   // ---------- I18N DICTIONARY (EN / HI) ----------
   const translations = {
@@ -427,7 +427,136 @@ registerBtn.onclick = async () => {
       currentUser = null; currentUID = null; currentShop = null;
       authWrap.classList.remove('hidden'); appWrap.classList.add('hidden');
     }
+
+
+    await checkSubscriptionStatus();
   });
+
+//subscription model checking
+async function checkSubscriptionStatus() {
+  if (!currentUID) return;
+
+  const vendorRef = db.collection("vendors").doc(currentUID);
+  const vendorDoc = await vendorRef.get();
+  if (!vendorDoc.exists) return;
+
+  const data = vendorDoc.data();
+  const createdAt = data.createdAt?.toDate
+    ? data.createdAt.toDate()
+    : new Date(data.createdAt || Date.now());
+
+  const now = new Date();
+  const diffDays = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+
+  const sub = data.subscription || {};
+  const isTrialActive = diffDays < 3;
+  const isActive = sub.status === "active" && new Date(sub.endDate) > now;
+  const isPending = sub.status === "pending";
+
+  if (isTrialActive) {
+    console.log("🟢 Trial active — expires in", 3 - diffDays, "days");
+    return;
+  }
+
+  if (isActive) {
+    console.log("✅ Subscription active:", sub.plan, "till", sub.endDate);
+    return;
+  }
+
+  // Subscription expired or pending
+  if (isPending) {
+    const overlay = document.createElement("div");
+    overlay.className =
+      "fixed inset-0 bg-black/60 flex items-center justify-center z-50";
+    overlay.innerHTML = `
+      <div class="bg-white rounded-xl p-6 w-96 text-center shadow-xl">
+        <h2 class="text-2xl font-semibold mb-2">Payment Pending</h2>
+        <p class="text-gray-600 mb-4">Your payment confirmation is pending. Once verified by admin, your plan will be activated.</p>
+        <button id="logoutPending" class="mt-4 bg-gray-300 text-gray-800 py-2 px-6 rounded-lg">Logout</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById("logoutPending").onclick = async () => {
+      await auth.signOut();
+    };
+    return;
+  }
+
+  // No active or pending subscription → show plan selection
+  const overlay = document.createElement("div");
+  overlay.className =
+    "fixed inset-0 bg-black/60 flex items-center justify-center z-50";
+  overlay.innerHTML = `
+    <div class="bg-white rounded-xl p-6 w-96 text-center shadow-xl">
+      <h2 class="text-2xl font-semibold mb-2">Subscription Required</h2>
+      <p class="text-gray-600 mb-4">Your free trial or subscription has ended. Please select a plan to continue.</p>
+      <div class="space-y-2 mb-4">
+        <button id="subBasic" class="w-full py-3 bg-emerald-500 text-white rounded-lg font-semibold">Basic — ₹300/month</button>
+        <button id="subAdvance" class="w-full py-3 bg-amber-500 text-white rounded-lg font-semibold">Advanced — ₹450/month</button>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">After payment, admin will verify and activate your account within 24 hours.</p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById("subBasic").onclick = async () => {
+    await requestSubscription(vendorRef, "basic", 300);
+    overlay.remove();
+    alert("🕓 Payment request submitted for Basic plan. Awaiting admin approval.");
+    await auth.signOut();
+  };
+
+  document.getElementById("subAdvance").onclick = async () => {
+    await requestSubscription(vendorRef, "advanced", 450);
+    overlay.remove();
+    alert("🕓 Payment request submitted for Advanced plan. Awaiting admin approval.");
+    await auth.signOut();
+  };
+}
+
+
+async function requestSubscription(vendorRef, plan, amount) {
+  const now = new Date();
+  const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // tentative end date
+
+  const subscriptionData = {
+    subscription: {
+      plan,
+      status: "pending", // 🟡 will be updated to "active" manually by admin
+      startDate: now.toISOString(),
+      endDate: end.toISOString(),
+      amount,
+      paymentMode: "manual",
+      remarks: "Awaiting admin confirmation"
+    },
+  };
+
+  await vendorRef.set(subscriptionData, { merge: true });
+}
+
+
+
+
+// async function activateSubscription(vendorRef, plan, amount) {
+//   const now = new Date();
+//   const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days validity
+
+//   const subscriptionData = {
+//     subscription: {
+//       plan,
+//       status: "active",
+//       startDate: now.toISOString(),
+//       endDate: end.toISOString(),
+//       amount,
+//       paymentMode: "manual", // can be updated later via admin or payment gateway
+//     },
+//   };
+
+//   await vendorRef.set(subscriptionData, { merge: true });
+// }
+
+  
 
 
 
@@ -467,7 +596,7 @@ regShop.addEventListener('blur', async () => {
   // ---------- TABS ----------
   function show(tab){
     [viewProducts, viewSales, viewHistory, viewOrders, viewStorefront].forEach(v => v.classList.add('hidden'));
-    [tabProducts, tabSales, tabHistory, tabOrders, tabStorefront].forEach(b => b.classList.remove('bg-emerald-200'));
+    [tabProducts, tabSales, tabHistory, tabOrders, tabStorefront].forEach(b => b.classList.remove('bg-emerald-200', 'bg-emerald-100'));
     if(tab==='products'){ viewProducts.classList.remove('hidden'); tabProducts.classList.add('bg-emerald-200'); }
     if(tab==='sales'){ viewSales.classList.remove('hidden'); tabSales.classList.add('bg-emerald-200'); }
     if(tab==='history'){ viewHistory.classList.remove('hidden'); tabHistory.classList.add('bg-emerald-200'); }
@@ -1899,10 +2028,7 @@ function renderOrders() {
       <div class="text-sm muted">Online Sales (Delivered)</div>
       <div class="font-semibold text-emerald-700">₹${onlineDeliveredTotal.toFixed(2)}</div>
     </div>
-    <div class="p-3 rounded bg-white shadow-sm flex-1">
-      <div class="text-sm muted">In-Store Sales (Delivered)</div>
-      <div class="font-semibold text-emerald-700">₹${instoreDeliveredTotal.toFixed(2)}</div>
-    </div>
+   
   `;
 
   // filter orders
@@ -1981,10 +2107,30 @@ function renderOrders() {
     // Optional: viewOrderBtn could open a modal / expand; keep placeholder for future
     const viewBtn = div.querySelector('.viewOrderBtn');
     viewBtn.onclick = () => {
-      // simple expand toggle: show JSON in alert — you can replace with modal later
-      const pretty = JSON.stringify(order, null, 2);
-      alert(pretty);
+      const cust = order.customer || {};
+      const items = order.items || [];
+    
+      let message = `🧾 Order Details\n──────────────────────\n`;
+      message += `👤 Name: ${order.customerName || "N/A"}\n`;
+      message += `📞 Phone: ${order.phone || "N/A"}\n`;
+      message += `🏠 Address: ${order.address || "N/A"}\n\n`;
+      
+      message += `🛒 Items:\n`;
+      if (items.length > 0) {
+        items.forEach(it => {
+          message += `• ${it.name || "-"} — ${it.qty || 1} ${it.unit || ''} — ₹${Number(it.price || 0).toFixed(2)}\n`;
+        });
+      } else {
+        message += "No items listed\n";
+      }
+    
+      message += `\n💰 Total: ₹${order.total || 0}\n`;
+      if (order.date) message += `📅 Date: ${new Date(order.date).toLocaleString()}\n`;
+      if (order.status) message += `📦 Status: ${order.status}\n`;
+    
+      alert(message);
     };
+    
 
     ordersList.appendChild(div);
   });
@@ -2011,6 +2157,20 @@ function showToast(message) {
 function playSound() {
   try { notifySound.play(); } catch (e) { console.warn("Sound blocked by browser autoplay policy"); }
 }
+
+
+
+// My Plan Button
+document.addEventListener("DOMContentLoaded", () => {
+  const viewBtn = document.getElementById("viewSubscriptionBtn");
+  if (viewBtn) {
+    viewBtn.addEventListener("click", () => {
+      const vendorId = currentUID || getVendorIdFromUrl();
+      if (!vendorId) return alert("Vendor ID not found in URL");
+      window.location.href = `subscription.html?vendor=${vendorId}`;
+    });
+  }
+});
 
 
 

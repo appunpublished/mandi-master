@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel — Vendor Subscriptions</title>
+
+  <!-- ✅ Firebase Compat SDKs (NOT modular) -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
+
+  <!-- ✅ Shared config must come next -->
+  <script src="./firebase-config.js"></script>
+
+  <!-- ✅ Then your admin logic -->
+  <script src="./admin.js" defer></script>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css">
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <div id="loginView" class="flex flex-col items-center justify-center h-screen">
+    <div class="bg-white shadow-lg rounded-xl p-8 w-96">
+      <h1 class="text-2xl font-bold mb-4 text-center">Admin Login</h1>
+      <input id="adminEmail" type="email" placeholder="Email" class="w-full mb-3 p-3 border rounded-lg">
+      <input id="adminPass" type="password" placeholder="Password" class="w-full mb-3 p-3 border rounded-lg">
+      <button id="adminLoginBtn" class="w-full bg-emerald-600 text-white p-3 rounded-lg font-semibold">Login</button>
+    </div>
+  </div>
+
+  <div id="adminView" class="hidden p-6">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-2xl font-semibold">Vendor Subscriptions</h2>
+      <button id="logoutBtn" class="bg-gray-200 px-4 py-2 rounded-lg">Logout</button>
+    </div>
+
+    <input id="searchBox" type="text" placeholder="Search vendor..." class="w-full mb-4 p-3 border rounded-lg">
+
+    <div id="vendorList" class="grid gap-4"></div>
+  </div>
+</body>
+</html>

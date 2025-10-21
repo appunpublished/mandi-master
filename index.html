@@ -124,6 +124,10 @@
     <button id="langToggle" class="w-full big-btn bg-indigo-100" title="Toggle language">🌐 हिंदी</button>
     <button id="shareLinkBtn" class="w-full big-btn bg-emerald-500 text-white">🔗 Share Store QR/Link</button>
     <button id="tabStorefront" class="flex-1 big-btn bg-slate-100">Storefront</button>
+    <button id="tabHistory" class="flex-1 big-btn bg-slate-100" data-i18n="tab_history">History</button>
+    <button id="viewSubscriptionBtn" class="bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600">
+      My Plan
+    </button>
     <button id="logoutBtn" class="w-full big-btn bg-red-500 text-white" data-i18n="btn_logout">Logout</button>
   </div>
 </div>
@@ -132,7 +136,7 @@
     <nav class="flex gap-2 mb-4">
       <button id="tabProducts" class="flex-1 big-btn bg-emerald-100" data-i18n="tab_products">Products</button>
       <button id="tabSales" class="flex-1 big-btn bg-slate-100" data-i18n="tab_sales">Sales</button>
-      <button id="tabHistory" class="flex-1 big-btn bg-slate-100" data-i18n="tab_history">History</button>
+     
       <button id="tabOrders" class="relative flex-1 big-btn bg-slate-100">
         Orders
         <span id="orderBadge" class="absolute top-0 right-2 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full hidden">0</span>
@@ -287,7 +291,7 @@
 
 <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-lg shadow-lg text-sm hidden z-50"></div>
 <audio id="notifySound" src="assets/sounds/notification.wav" preload="auto"></audio>
-
+<script src="./firebase-config.js"></script>
  <script src="function.js"></script>
 
 </body>

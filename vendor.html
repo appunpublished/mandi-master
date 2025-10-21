@@ -7,6 +7,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <!-- <script src="./firebase-config.js"></script> -->
+<script src="./vendor.js" defer></script>
   <style>
     :root { --theme: #059669; }
     .btn-theme { background-color: var(--theme); }
@@ -284,7 +286,7 @@
           }
           filtered.forEach(p => {
             // Preset options: adjust depending on likely product unit
-            const presets = (isKgUnit(p.unit) || isGramUnit(p.unit)) ? ['25 gms','250 gms','500 gms','1 kg'] :
+            const presets = (isKgUnit(p.unit) || isGramUnit(p.unit)) ? ['250 gms','500 gms','750 gms'] :
                             isDozenUnit(p.unit) ? ['1 pc','6 pcs','1 dozen'] :
                             ['1 pc','2 pc','5 pc'];
             const card = document.createElement('div');

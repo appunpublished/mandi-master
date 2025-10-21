@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vendor Subscription — Faguni Farms</title>
+
+  <!-- ✅ Firebase Compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
+
+  <!-- Shared Config -->
+  <script src="./firebase-config.js"></script>
+
+  <!-- Page Logic -->
+  <script src="./subscription.js" defer></script>
+
+  <!-- TailwindCSS -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-b from-emerald-50 to-white min-h-screen flex items-center justify-center p-4">
+
+  <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md text-center border border-emerald-100">
+    <h1 class="text-3xl font-bold text-emerald-600 mb-6">🌿 Subscription Details</h1>
+
+    <!-- Loading -->
+    <div id="loading" class="text-gray-500 animate-pulse">Fetching your subscription...</div>
+
+    <!-- Subscription Card -->
+    <div id="subCard" class="hidden space-y-5">
+      <div class="space-y-2">
+        <div class="flex justify-between text-gray-700">
+          <span class="font-semibold">Plan:</span>
+          <span id="planBadge" class="px-3 py-1 rounded-full text-white text-sm font-medium"></span>
+        </div>
+
+        <div class="flex justify-between text-gray-700">
+          <span class="font-semibold">Status:</span>
+          <span id="statusBadge" class="px-3 py-1 rounded-full text-white text-sm font-medium"></span>
+        </div>
+
+        <div class="flex justify-between text-gray-700">
+          <span class="font-semibold">Start Date:</span>
+          <span id="start"></span>
+        </div>
+
+        <div class="flex justify-between text-gray-700">
+          <span class="font-semibold">End Date:</span>
+          <span id="end"></span>
+        </div>
+
+        <div class="flex justify-between text-gray-700">
+          <span class="font-semibold">Days Left:</span>
+          <span id="daysLeft" class="font-semibold text-emerald-600"></span>
+        </div>
+
+        <div class="flex justify-between text-gray-700">
+          <span class="font-semibold">Payment Mode:</span>
+          <span id="mode"></span>
+        </div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="mt-5">
+        <div class="w-full bg-gray-200 rounded-full h-3">
+          <div id="progressBar" class="bg-emerald-500 h-3 rounded-full transition-all duration-700 ease-out" style="width: 0%"></div>
+        </div>
+        <p class="text-xs text-gray-500 mt-1" id="progressLabel">Progress: 0%</p>
+      </div>
+
+      <!-- Renew Button -->
+      <div id="renewBtnContainer" class="pt-4 hidden">
+        <button id="renewBtn" class="w-full bg-amber-500 text-white py-2 rounded-lg font-semibold hover:bg-amber-600 transition-all">
+          🔄 Renew Subscription
+        </button>
+      </div>
+
+      <!-- Back to Dashboard Button
+<div class="pt-3">
+    <button id="backBtn" class="w-full bg-emerald-500 text-white py-2 rounded-lg font-semibold hover:bg-emerald-600 transition-all">
+      ⬅️ Back to Dashboard
+    </button>
+  </div> -->
+  
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-8 text-sm text-gray-500">
+      Faguni Farms Vendor Portal © 2025
+    </div>
+  </div>
+
+</body>
+</html>
