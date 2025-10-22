@@ -2175,4 +2175,190 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
+// In function.js, FIND and REPLACE the entire `checkSubscriptionStatus` function with this new version:
+
+async function checkSubscriptionStatus() {
+  if (!currentUID) return;
+
+  const vendorRef = db.collection("vendors").doc(currentUID);
+  const vendorDoc = await vendorRef.get();
+  if (!vendorDoc.exists) return; // Should not happen if logged in
+
+  const data = vendorDoc.data();
+  const sub = data.subscription || {};
+  const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+  const now = new Date();
+
+  // 1. Fetch trial plan details from Firestore
+  let trialDurationDays = 7; // Default
+  try {
+    const trialPlanDoc = await db.collection("plans").doc("trial").get();
+    if (trialPlanDoc.exists) {
+      trialDurationDays = trialPlanDoc.data().trialDurationDays || 7;
+    }
+  } catch (e) {
+    console.warn("Could not fetch trial plan details, using default.", e);
+  }
+
+  // 2. Determine active plan
+  const diffDays = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+  const isTrialActive = !sub.planId && diffDays < trialDurationDays;
+  const isActiveSub = sub.status === "active" && new Date(sub.endDate) > now;
+
+  let activePlanId = null;
+
+  if (isActiveSub) {
+    activePlanId = sub.planId || sub.plan.toLowerCase();
+  } else if (isTrialActive) {
+    activePlanId = "trial";
+  }
+
+  // 3. Handle different states
+  if (sub.status === "pending") {
+    // Show "Pending" overlay
+    const overlay = document.createElement("div");
+    overlay.className = "fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4";
+    overlay.innerHTML = `
+      <div class="bg-white rounded-xl p-6 w-full max-w-md text-center shadow-xl">
+        <h2 class="text-2xl font-semibold mb-2 text-yellow-600">Payment Pending</h2>
+        <p class="text-gray-600 mb-4">Your request for the <strong>${sub.plan || 'plan'}</strong> is pending. Once verified by admin, your plan will be activated.</p>
+        <button id="logoutPending" class="mt-4 bg-gray-300 text-gray-800 py-2 px-6 rounded-lg">Logout</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById("logoutPending").onclick = () => auth.signOut();
+    return; // Stop further execution
+  }
+
+  if (activePlanId) {
+    // User has an active plan (trial or paid)
+    // Fetch features for this plan and apply them
+    try {
+      const planDoc = await db.collection("plans").doc(activePlanId).get();
+      if (planDoc.exists) {
+        const features = planDoc.data().features || [];
+        applyFeatureGating(features);
+      } else {
+        // Plan ID not found, default to basic
+        applyFeatureGating(['products', 'sales']);
+        console.warn(`Plan document for "${activePlanId}" not found. Defaulting to basic features.`);
+      }
+    } catch (e) {
+      console.error("Error fetching plan features:", e);
+      applyFeatureGating([]); // No features
+    }
+    return; // All good
+  }
+
+  // 4. No active plan and trial is over. Show "Subscription Required" modal.
+  // This modal will now dynamically load plans.
+  const overlay = document.createElement("div");
+  overlay.className = "fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4";
+  overlay.innerHTML = `
+    <div class="bg-white rounded-xl p-6 w-full max-w-md text-center shadow-xl">
+      <h2 class="text-2xl font-semibold mb-2 text-red-600">Subscription Required</h2>
+      <p class="text-gray-600 mb-4">Your free trial or subscription has ended. Please select a plan to continue.</p>
+      <div id="planButtonsContainer" class="space-y-2 mb-4">
+        <p class="text-gray-500 animate-pulse">Loading plans...</p>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">After payment, admin will verify and activate your account within 24 hours.</p>
+      <button id="logoutExpired" class="mt-4 bg-gray-300 text-gray-800 py-2 px-6 rounded-lg">Logout</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("logoutExpired").onclick = () => auth.signOut();
+
+  // 5. Dynamically load plans into the modal
+  try {
+    const plansSnap = await db.collection("plans").where("pricePerWeek", ">", 0).orderBy("pricePerWeek").get();
+    const container = document.getElementById("planButtonsContainer");
+    container.innerHTML = ""; // Clear "loading"
+    
+    plansSnap.forEach(doc => {
+      const plan = doc.data();
+      const btn = document.createElement("button");
+      btn.className = "w-full py-3 bg-emerald-500 text-white rounded-lg font-semibold hover:bg-emerald-600";
+      btn.textContent = `${plan.name} — ₹${plan.pricePerWeek}/week`;
+      btn.onclick = async () => {
+        await requestSubscription(vendorRef, plan.name, plan.id, plan.pricePerWeek);
+        overlay.remove();
+        alert(`🕓 Payment request submitted for ${plan.name} plan. Awaiting admin approval. You will be logged out.`);
+        await auth.signOut();
+      };
+      container.appendChild(btn);
+    });
+  } catch (e) {
+    console.error("Failed to load plans for modal:", e);
+    document.getElementById("planButtonsContainer").innerHTML = `<p class="text-red-500">Could not load plans. Please refresh.</p>`;
+  }
+}
+
+// In function.js, FIND and REPLACE the `requestSubscription` function with this new version
+// (it now accepts planId and planName):
+
+async function requestSubscription(vendorRef, planName, planId, amount) {
+  const subscriptionData = {
+    subscription: {
+      plan: planName,
+      planId: planId, // Store the document ID
+      status: "pending", // 🟡 will be updated to "active" manually by admin
+      amount,
+      paymentMode: "manual",
+      remarks: "Awaiting admin confirmation",
+      requestedAt: firebase.firestore.FieldValue.serverTimestamp()
+    },
+  };
+  await vendorRef.set(subscriptionData, { merge: true });
+}
+
+
+// In function.js, ADD this new function somewhere (e.g., after the `show` function):
+
+/**
+ * Hides or shows UI elements based on the user's active plan features.
+ * @param {string[]} features - An array of feature keys (e.g., ['products', 'sales', 'history'])
+ */
+function applyFeatureGating(features) {
+  const has = (feature) => features.includes(feature) || features.includes("all");
+
+  // Helper to show/hide elements
+  const toggleElement = (elementId, condition) => {
+    const el = $(elementId);
+    if (el) {
+      // Buttons inside the menu are flex
+      const displayType = (elementId === 'tabHistory' || elementId === 'tabStorefront' || elementId === 'tabOrders') ? 'flex' : 'block';
+      el.style.display = condition ? displayType : 'none';
+    } else {
+      console.warn(`Feature Gating: Element with ID "${elementId}" not found.`);
+    }
+  };
+
+  // --- Main App Tabs ---
+  toggleElement('tabProducts', has('products'));
+  toggleElement('tabSales', has('sales'));
+  
+  // --- Side Menu Tabs ---
+  toggleElement('tabHistory', has('history'));
+  toggleElement('tabOrders', has('online_orders'));
+  toggleElement('tabStorefront', has('custom_storefront'));
+
+  // --- In-App Features ---
+  // (We use `sendBillArea` as the element ID from index.html)
+  toggleElement('sendBillArea', has('whatsapp_billing'));
+  
+  // --- Handle Default View ---
+  // If the default "Products" tab is hidden, try to show "Sales".
+  // If both are hidden, it's a problem, but we'll default to 'sales' view logic.
+  if (!has('products')) {
+    // If 'sales' is also hidden, the `show('sales')` will just show a blank view,
+    // which is correct as the user has no permitted tabs.
+    show('sales'); 
+  } else {
+    show('products'); // Default view
+  }
+}
+
+
+
+
 })();
