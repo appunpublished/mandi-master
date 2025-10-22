@@ -1,43 +1,161 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Panel — Vendor Subscriptions</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — Control Panel</title>
 
-  <!-- ✅ Firebase Compat SDKs (NOT modular) -->
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
 
-  <!-- ✅ Shared config must come next -->
+  <!-- Firebase Config -->
   <script src="./firebase-config.js"></script>
 
-  <!-- ✅ Then your admin logic -->
-  <script src="./admin.js" defer></script>
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #f9fafb, #eef2ff);
+      min-height: 100vh;
+    }
+    .sidebar-link {
+      @apply flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-emerald-100 hover:text-emerald-700 transition;
+    }
+    .sidebar-link.active {
+      @apply bg-emerald-600 text-white;
+    }
+    .tab-view { display: none; }
+    .tab-view.active { display: block; }
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #10b981;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      animation: spin 1s linear infinite;
+      margin: 2rem auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
 </head>
-<body class="bg-gray-50 text-gray-800">
-  <div id="loginView" class="flex flex-col items-center justify-center h-screen">
-    <div class="bg-white shadow-lg rounded-xl p-8 w-96">
-      <h1 class="text-2xl font-bold mb-4 text-center">Admin Login</h1>
-      <input id="adminEmail" type="email" placeholder="Email" class="w-full mb-3 p-3 border rounded-lg">
-      <input id="adminPass" type="password" placeholder="Password" class="w-full mb-3 p-3 border rounded-lg">
-      <button id="adminLoginBtn" class="w-full bg-emerald-600 text-white p-3 rounded-lg font-semibold">Login</button>
+
+<body class="text-gray-800">
+
+  <!-- 🔒 LOGIN VIEW -->
+  <div id="loginView" class="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-emerald-50 to-emerald-100">
+    <div class="bg-white shadow-2xl rounded-2xl p-10 w-96 text-center">
+      <h1 class="text-3xl font-bold mb-6 text-emerald-700">Admin Login</h1>
+      <input id="adminEmail" type="email" placeholder="Email"
+             class="w-full mb-3 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400">
+      <input id="adminPass" type="password" placeholder="Password"
+             class="w-full mb-4 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400">
+      <button id="adminLoginBtn"
+              class="w-full bg-emerald-600 text-white p-3 rounded-lg font-semibold hover:bg-emerald-700 transition">
+        Login
+      </button>
     </div>
   </div>
 
-  <div id="adminView" class="hidden p-6">
-    <div class="flex justify-between items-center mb-4">
-      <h2 class="text-2xl font-semibold">Vendor Subscriptions</h2>
-      <button id="logoutBtn" class="bg-gray-200 px-4 py-2 rounded-lg">Logout</button>
-    </div>
+  <!-- 🧭 ADMIN DASHBOARD VIEW -->
+  <div id="adminView" class="hidden h-screen flex overflow-hidden">
 
-    <input id="searchBox" type="text" placeholder="Search vendor..." class="w-full mb-4 p-3 border rounded-lg">
+    <!-- 🧩 SIDEBAR -->
+    <aside class="w-64 bg-white shadow-lg flex flex-col justify-between">
+      <div>
+        <div class="px-6 py-5 border-b">
+          <h2 class="text-xl font-bold text-emerald-700">Admin Panel</h2>
+        </div>
+        <nav class="mt-4 space-y-2">
+          <button class="sidebar-link active" data-tab="vendors">🧑‍💼 Vendors</button>
+          <button class="sidebar-link" data-tab="subscriptions">💳 Subscriptions</button>
+          <button class="sidebar-link" data-tab="orders">📦 Orders</button>
+          <button class="sidebar-link" data-tab="settings">⚙️ Settings</button>
+        </nav>
+      </div>
+      <div class="p-4 border-t">
+        <button id="logoutBtn"
+                class="w-full bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-red-100 hover:text-red-600 transition">
+          Logout
+        </button>
+      </div>
+    </aside>
 
-    <div id="vendorList" class="grid gap-4"></div>
+    <!-- 📊 MAIN CONTENT -->
+    <main class="flex-1 bg-gray-50 p-6 overflow-y-auto">
+      <!-- Header -->
+      <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-semibold text-emerald-700">Dashboard Overview</h1>
+        <input id="searchBox" type="text" placeholder="Search vendor..."
+               class="p-2 border rounded-lg focus:ring-2 focus:ring-emerald-400" />
+      </div>
+
+      <!-- Stats Cards -->
+      <div id="statsCards" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="bg-white shadow rounded-xl p-5">
+          <h3 class="text-sm text-gray-500">Total Vendors</h3>
+          <p id="vendorCount" class="text-2xl font-bold text-emerald-600">--</p>
+        </div>
+        <div class="bg-white shadow rounded-xl p-5">
+          <h3 class="text-sm text-gray-500">Active Subscriptions</h3>
+          <p id="subscriptionCount" class="text-2xl font-bold text-emerald-600">--</p>
+        </div>
+        <div class="bg-white shadow rounded-xl p-5">
+          <h3 class="text-sm text-gray-500">Orders</h3>
+          <p id="orderCount" class="text-2xl font-bold text-emerald-600">--</p>
+        </div>
+      </div>
+
+      <!-- Vendors -->
+      <section id="vendors" class="tab-view active">
+        <h2 class="text-xl font-semibold mb-4">🧑‍💼 Manage Vendors</h2>
+        <div id="vendorList" class="grid md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        <div id="vendorLoader" class="loader hidden"></div>
+      </section>
+
+      <!-- Subscriptions -->
+      <section id="subscriptions" class="tab-view">
+        <h2 class="text-xl font-semibold mb-4">💳 Manage Subscriptions</h2>
+        <div id="subscriptionList" class="grid md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        <div id="subscriptionLoader" class="loader hidden"></div>
+      </section>
+
+      <!-- Orders -->
+      <section id="orders" class="tab-view">
+        <h2 class="text-xl font-semibold mb-4">📦 Manage Orders</h2>
+        <div id="orderList" class="space-y-4"></div>
+        <div id="orderLoader" class="loader hidden"></div>
+      </section>
+
+      <!-- Settings -->
+      <section id="settings" class="tab-view">
+        <h2 class="text-xl font-semibold mb-4">⚙️ Settings</h2>
+        <div class="bg-white p-6 rounded-xl shadow text-gray-600">
+          <p>System configuration options will go here.</p>
+        </div>
+      </section>
+    </main>
   </div>
+
+  <!-- 🔁 Tabs Logic -->
+  <script>
+    document.querySelectorAll(".sidebar-link").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".sidebar-link").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        const tabId = btn.dataset.tab;
+        document.querySelectorAll(".tab-view").forEach(view => view.classList.remove("active"));
+        document.getElementById(tabId).classList.add("active");
+      });
+    });
+  </script>
+
+  <!-- Admin JS -->
+  <script src="./admin.js" defer></script>
 </body>
 </html>
